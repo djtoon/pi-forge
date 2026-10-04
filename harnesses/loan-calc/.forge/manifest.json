@@ -1,0 +1,29 @@
+{
+	"generator": "forge-gen@0.1.0",
+	"files": {
+		"package.json": "db7501ec55a24336",
+		"bin/loan-calc.ts": "dc54a0288ff9bbc5",
+		"themes/loan-calc.json": "3acc2357cb6ee71e",
+		"forge_modules/ui/header.ts": "b38c4ab87cfaba48",
+		"extensions/forge-header.ts": "4836749b88c921ef",
+		"forge_modules/guards/guards.ts": "331aa83ba9b8f453",
+		"extensions/forge-guards.ts": "9ff7681485b8c7d5",
+		"forge_modules/views/contract.ts": "7c9fb4353aa5839b",
+		"forge_modules/ui/views.ts": "106df82a93c791a4",
+		"forge_modules/views/chart/sample.json": "a77324c6bd8ac71e",
+		"forge_modules/views/chart/tui.ts": "25dd8652f833dc1c",
+		"forge_modules/views/chart/types.ts": "a2293f8470b9970f",
+		"forge_modules/views/chart/view.json": "f38f7efca98e5147",
+		"forge_modules/views/chart/web.js": "1546f7198021e0ac",
+		"forge_modules/views/registry.ts": "9388be6c9517877d",
+		"extensions/forge-views.ts": "0c94b661aad6493b",
+		"forge_modules/plan/plan.ts": "b3d2243aa9590c48",
+		"forge_modules/views/plan/sample.json": "8aacc8dee41039ed",
+		"forge_modules/views/plan/tui.ts": "34c18e3523635b89",
+		"forge_modules/views/plan/types.ts": "e445ca143c968647",
+		"forge_modules/views/plan/view.json": "a7566ed88f4ee96d",
+		"forge_modules/views/plan/web.js": "40cc44832a2a6c2c",
+		"extensions/forge-plan.ts": "f8162acaf5033b2b",
+		"APPEND_SYSTEM.md": "0f1ca09074403a42"
+	}
+}

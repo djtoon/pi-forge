@@ -1,0 +1,23 @@
+{
+	"id": "diff",
+	"title": "Diff",
+	"description": "Unified diffs per file, colored (code changes, config changes, document revisions).",
+	"domains": [
+		"coding",
+		"devops",
+		"writing",
+		"legal"
+	],
+	"dataType": "DiffData",
+	"panel": false,
+	"panelTitle": "latest diff",
+	"web": {
+		"libraries": []
+	},
+	"files": {
+		"types": "types.ts",
+		"tui": "tui.ts",
+		"web": "web.js",
+		"sample": "sample.json"
+	}
+}

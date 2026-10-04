@@ -1,0 +1,28 @@
+{
+	"name": "@forge/forge",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Builds, validates, and updates agent harnesses",
+	"keywords": [
+		"pi-package"
+	],
+	"bin": {
+		"forge": "./bin/forge.ts"
+	},
+	"pi": {
+		"extensions": [
+			"./extensions/*.ts",
+			"./custom/extensions/*.ts"
+		],
+		"skills": [
+			"./custom/skills"
+		],
+		"themes": [
+			"./themes/*.json"
+		]
+	},
+	"dependencies": {
+		"@forge/harness-core": "*"
+	}
+}

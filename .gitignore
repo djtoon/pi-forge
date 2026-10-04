@@ -1,0 +1,27 @@
+vendor/
+node_modules/
+dist/
+*.log
+.env
+harnesses/*/.state/
+
+# Files produced by running harnesses (work output, not source)
+/designs/
+/exports/
+/models/
+/sprites/
+/.tmp-*/
+harnesses/*/models/
+harnesses/*/designs/
+harnesses/*/exports/
+harnesses/*/sprites/
+
+# Harnesses you build with pi-Forge stay local; only the bundled examples are in the repo.
+harnesses/*
+!harnesses/chem/
+!harnesses/loan-calc/
+/perfumery/
+
+# Local notes and source images (docs/ has the published copies)
+/plan.md
+/poster.png

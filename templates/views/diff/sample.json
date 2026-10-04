@@ -1,0 +1,9 @@
+{
+	"title": "Example change",
+	"files": [
+		{
+			"path": "config.yaml",
+			"patch": "--- a/config.yaml\n+++ b/config.yaml\n@@ -1,4 +1,4 @@\n name: demo\n-timeout: 30\n+timeout: 60\n retries: 3\n-log_level: debug\n+log_level: info\n"
+		}
+	]
+}

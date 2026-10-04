@@ -1,0 +1,20 @@
+{
+	"id": "plan",
+	"title": "Plan",
+	"description": "The agent's working plan as a checklist; steps tick off as they are done. Built into every harness (update_plan tool).",
+	"domains": [
+		"*"
+	],
+	"dataType": "PlanData",
+	"panel": true,
+	"panelTitle": "Plan",
+	"web": {
+		"libraries": []
+	},
+	"files": {
+		"types": "types.ts",
+		"tui": "tui.ts",
+		"web": "web.js",
+		"sample": "sample.json"
+	}
+}

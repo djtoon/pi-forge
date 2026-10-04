@@ -1,0 +1,28 @@
+{
+	"name": "@forge/loan-calc",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Loan amortization schedules and loan scenario comparison, pure calculation.",
+	"keywords": [
+		"pi-package"
+	],
+	"bin": {
+		"loan-calc": "./bin/loan-calc.ts"
+	},
+	"pi": {
+		"extensions": [
+			"./extensions/*.ts",
+			"./custom/extensions/*.ts"
+		],
+		"skills": [
+			"./custom/skills"
+		],
+		"themes": [
+			"./themes/*.json"
+		]
+	},
+	"dependencies": {
+		"@forge/harness-core": "*"
+	}
+}

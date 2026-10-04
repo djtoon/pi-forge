@@ -1,0 +1,20 @@
+{
+	"id": "data-table",
+	"title": "Data table",
+	"description": "Rows and columns: comparisons, query results, lists. Sortable in the web UI.",
+	"domains": [
+		"*"
+	],
+	"dataType": "DataTableData",
+	"panel": false,
+	"web": {
+		"libraries": []
+	},
+	"panelTitle": "latest table",
+	"files": {
+		"types": "types.ts",
+		"tui": "tui.ts",
+		"web": "web.js",
+		"sample": "sample.json"
+	}
+}

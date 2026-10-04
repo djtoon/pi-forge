@@ -1,0 +1,27 @@
+{
+	"id": "markdown-doc",
+	"title": "Markdown document",
+	"description": "A rendered document (report, brief, summary, spec) the user reads as a page.",
+	"domains": [
+		"*",
+		"writing",
+		"research",
+		"legal",
+		"product"
+	],
+	"dataType": "MarkdownDocData",
+	"panel": true,
+	"panelTitle": "document",
+	"web": {
+		"libraries": [
+			"marked",
+			"DOMPurify"
+		]
+	},
+	"files": {
+		"types": "types.ts",
+		"tui": "tui.ts",
+		"web": "web.js",
+		"sample": "sample.json"
+	}
+}

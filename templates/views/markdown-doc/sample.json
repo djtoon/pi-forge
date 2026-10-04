@@ -1,0 +1,4 @@
+{
+	"title": "Example document",
+	"markdown": "# Example document\n\nThe **markdown-doc** view shows reports, briefs, and summaries as a readable page.\n\n## What it supports\n\n- Headings, **bold**, *italic*, and `code`\n- Lists and links\n- Tables:\n\n| Section | Purpose |\n|---|---|\n| Summary | The answer in two lines |\n| Details | Evidence and numbers |\n\n> Quotes stand out like this.\n"
+}

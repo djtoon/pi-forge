@@ -1,0 +1,40 @@
+{
+	"title": "Example: weekly tasks",
+	"columns": [
+		"Task",
+		"Owner",
+		"Status",
+		"Hours",
+		"Done %"
+	],
+	"rows": [
+		[
+			"Write spec",
+			"Ana",
+			"done",
+			6,
+			100
+		],
+		[
+			"Build prototype",
+			"Ben",
+			"in progress",
+			14.5,
+			60
+		],
+		[
+			"User testing",
+			"Chen",
+			"planned",
+			8,
+			0
+		],
+		[
+			"Fix feedback",
+			"Ana",
+			"planned",
+			null,
+			0
+		]
+	]
+}

@@ -1,0 +1,31 @@
+{
+	"title": "Render time by template (s)",
+	"kind": "bar",
+	"labels": [
+		"intro",
+		"product",
+		"pricing",
+		"outro"
+	],
+	"series": [
+		{
+			"name": "p50",
+			"values": [
+				4.2,
+				7.9,
+				5.1,
+				3.3
+			]
+		},
+		{
+			"name": "p95",
+			"values": [
+				6.8,
+				12.4,
+				8,
+				4.9
+			]
+		}
+	],
+	"unit": "s"
+}

@@ -1,0 +1,25 @@
+{
+	"id": "chart",
+	"title": "Chart",
+	"description": "Bar or line chart of one or more numeric series over labels (time, categories, experiments).",
+	"domains": [
+		"*",
+		"data",
+		"finance",
+		"science",
+		"ops",
+		"marketing"
+	],
+	"dataType": "ChartData",
+	"panel": true,
+	"panelTitle": "latest chart",
+	"web": {
+		"libraries": []
+	},
+	"files": {
+		"types": "types.ts",
+		"tui": "tui.ts",
+		"web": "web.js",
+		"sample": "sample.json"
+	}
+}

@@ -1,0 +1,25 @@
+{
+	"id": "image-gallery",
+	"title": "Image gallery",
+	"description": "Grid of images with captions (generated images, frames, screenshots, plots).",
+	"domains": [
+		"*",
+		"design",
+		"video",
+		"media",
+		"marketing",
+		"science"
+	],
+	"dataType": "ImageGalleryData",
+	"panel": true,
+	"panelTitle": "images",
+	"web": {
+		"libraries": []
+	},
+	"files": {
+		"types": "types.ts",
+		"tui": "tui.ts",
+		"web": "web.js",
+		"sample": "sample.json"
+	}
+}

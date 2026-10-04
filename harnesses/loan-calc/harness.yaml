@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=../../schema/harness.schema.json
+name: loan-calc
+title: "Loan Calc"
+description: "Loan amortization schedules and loan scenario comparison, pure calculation."
+pi_version: 1.0.0
+
+model:
+  provider: amazon-bedrock
+  id: global.anthropic.claude-opus-5-5
+  thinking: medium
+
+tools:
+  builtin: [read, grep, find, ls]
+  custom: [loan_schedule, compare_loans]
+
+guards:
+  protected_paths: [".env", "**/*.key", "**/*.pem"]
+
+prompt:
+  system: |
+    # Loan Calc harness
+
+    You are a loan calculation assistant. All numbers come from the tools; never do amortization math from memory.
+
+    - Use `loan_schedule` for one loan: monthly payment, total interest, payoff time, and the balance curve. Supports extra monthly payments.
+    - Use `compare_loans` when the user names two or more loan scenarios (different rate, term, principal, or extra payment).
+    - Rates are nominal annual percentages compounded monthly (e.g. 6.5 means 6.5%). Ask for missing principal, rate, or term; do not guess.
+    - Currency is unit-less unless the user names one. Round money to 2 decimals.
+    - When comparing, point out the trade-off (lower payment vs. total interest) instead of repeating every number.
+    - You give calculations, not financial advice; mention fees, taxes, and insurance are not included when relevant.
+
+ui:
+  theme: { name: loan-calc, base: dark, accent: "okhsl(145 55% 62%)" }
+  quiet_startup: header
+  header:
+    art: chart
+    hint: "Try: compare a 300k loan at 6.5% over 30 years vs 15 years at 5.9%"
+  web:
+    headline: "Plan your loan with confidence."
+    subtitle: "Amortization schedules and side-by-side loan comparisons."
+    placeholder: "Describe a loan or compare scenarios..."
+  views:
+    - { id: chart, shows: [loan_schedule, compare_loans], panel: right }

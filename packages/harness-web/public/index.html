@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta name="forge-token" content="__FORGE_TOKEN__" />
+	<title>pi-Forge</title>
+	<link rel="icon" type="image/svg+xml" href="/favicon.svg" id="favicon" />
+	<link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+	<div class="app" id="app">
+		<!-- Sidebar -->
+		<aside class="sidebar" id="sidebar" aria-label="Workspace">
+			<div class="brand" id="brand">
+				<span class="brand-mark" data-icon="agent"></span>
+				<span class="brand-name" id="title">…</span>
+			</div>
+
+			<button class="side-btn" id="new" type="button"><span data-icon="plus"></span>New chat</button>
+			<label class="side-search">
+				<span data-icon="search"></span>
+				<input id="search" type="search" placeholder="Search chats" autocomplete="off" />
+			</label>
+
+			<div class="side-label">Workspace</div>
+			<nav class="side-nav" id="workspace-nav">
+				<button class="nav-item" id="go-harnesses" type="button" hidden><span data-icon="layers"></span>Harnesses</button>
+				<button class="nav-item" id="go-views" type="button"><span data-icon="views"></span>Views</button>
+				<button class="nav-item" id="go-tools" type="button" hidden><span data-icon="tool"></span>Tools</button>
+			</nav>
+
+			<div class="side-divider"></div>
+			<div class="side-label">Recent chats</div>
+			<div class="sessions" id="sessions"></div>
+
+			<div class="side-footer">
+				<span class="avatar" id="avatar">··</span>
+				<span class="who" id="who">Personal workspace</span>
+				<button class="icon-btn" id="settings" type="button" title="Settings" data-icon="settings"></button>
+			</div>
+		</aside>
+
+		<!-- Main -->
+		<main class="main" id="main">
+			<header class="topbar">
+				<button class="icon-btn only-narrow" id="open-sidebar" type="button" title="Menu" data-icon="menu"></button>
+				<nav class="crumbs" aria-label="Breadcrumb">
+					<button class="crumb-root" id="crumb-root" type="button">Workspace</button>
+					<span class="crumb-sep">/</span>
+					<span class="crumb-current" id="chat-title">New chat</span>
+				</nav>
+				<div class="top-actions">
+					<ai-state id="agent-state" state="idle" size="20" title="Idle"></ai-state>
+					<button class="icon-btn" id="toggle-panels" type="button" title="Plan, outputs and panels" data-icon="panel" hidden></button>
+					<button class="icon-btn" id="help" type="button" title="Help" data-icon="help"></button>
+					<button class="icon-btn" id="more" type="button" title="More" data-icon="dots"></button>
+				</div>
+			</header>
+
+			<div class="scroller" id="scroller">
+				<div class="chat" id="chat" aria-live="polite"></div>
+				<section class="page" id="page" hidden></section>
+			</div>
+
+			<form class="composer" id="composer">
+				<div class="box">
+					<textarea id="input" rows="1" placeholder="Message…" autocomplete="off"></textarea>
+					<div class="box-row">
+						<button class="square-btn" id="plus" type="button" title="Commands and skills" data-icon="plus"></button>
+						<div class="status" id="status"></div>
+						<div class="spacer"></div>
+						<button class="select-btn" id="model-btn" type="button" title="Model">
+							<span data-icon="model"></span><b id="model-name">…</b><span data-icon="chevron"></span>
+						</button>
+						<button class="select-btn" id="level-btn" type="button" title="Thinking level">
+							<b id="model-level">…</b><span data-icon="chevron"></span>
+						</button>
+						<button class="send" id="send" type="submit" title="Send" data-icon="arrow"></button>
+					</div>
+				</div>
+				<div class="composer-hint" id="composer-hint">Shift + Enter for a new line</div>
+			</form>
+
+			<aside class="float-panels" id="float-panels" aria-label="Plan, outputs and panels">
+				<section class="ctx-card" id="ctx-card">
+					<div class="ctx-section" id="ctx-plan" hidden>
+						<div class="ctx-head"><span data-icon="planning"></span><span>Plan</span><span class="ctx-count" id="ctx-plan-count"></span></div>
+						<div class="ctx-body" id="ctx-plan-body"></div>
+					</div>
+					<div class="ctx-section" id="ctx-outputs" hidden>
+						<div class="ctx-head"><span data-icon="folder"></span><span>Outputs</span></div>
+						<div class="ctx-body" id="ctx-outputs-body"></div>
+					</div>
+				</section>
+				<div id="panels"></div>
+				<div id="widgets"></div>
+			</aside>
+		</main>
+	</div>
+
+	<div class="menu" id="menu" hidden></div>
+	<div class="toasts" id="toasts"></div>
+	<dialog id="dialog"><form method="dialog" id="dialog-form"></form></dialog>
+	<script type="module" src="/app.js"></script>
+</body>
+</html>

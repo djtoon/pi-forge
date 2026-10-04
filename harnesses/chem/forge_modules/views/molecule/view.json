@@ -1,0 +1,25 @@
+{
+	"id": "molecule",
+	"title": "Molecule",
+	"description": "One compound: identity, properties, and an interactive 3D structure (web) or property summary (terminal).",
+	"domains": [
+		"chemistry",
+		"biochemistry",
+		"pharma",
+		"materials"
+	],
+	"dataType": "MoleculeData",
+	"panel": true,
+	"web": {
+		"libraries": [
+			"3Dmol.js"
+		]
+	},
+	"panelTitle": "current molecule",
+	"files": {
+		"types": "types.ts",
+		"tui": "tui.ts",
+		"web": "web.js",
+		"sample": "sample.json"
+	}
+}

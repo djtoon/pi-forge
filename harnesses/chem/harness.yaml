@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=../../schema/harness.schema.json
+# Source of truth for the chem harness. Regenerate after editing:  npm run gen -- harnesses/chem --apply
+# Hand-written code lives in custom/ (tools: custom/extensions, helpers: custom/lib).
+name: chem
+title: Chem Lab
+description: Chemistry research assistant with PubChem tools and molecule views
+pi_version: 1.0.0
+
+model:
+  provider: amazon-bedrock
+  id: global.anthropic.claude-opus-5-5
+  thinking: medium
+
+tools:
+  builtin: [read, write, edit, bash, grep, find, ls]
+  custom: [molecule_lookup, molecule_compare, similar_molecules]
+
+guards:
+  protected_paths: [".env", "**/*.key", "**/*.pem"]
+  confirm_bash: ["rm -rf", "git push --force", "Remove-Item -Recurse"]
+
+prompt:
+  system: |
+    # Chem Lab harness
+
+    You are a chemistry research assistant working inside the Chem Lab harness.
+
+    - Use `molecule_lookup` for any specific compound; never state formulas, weights, or properties from memory when a lookup is possible.
+    - Use `molecule_compare` when the user names two or more compounds, and `similar_molecules` for analog/scaffold questions.
+    - Point out notable differences (e.g. Lipinski rule-of-five, polarity, H-bonding) rather than restating numbers.
+    - Say when a value is computed (PubChem XLogP, TPSA) rather than measured.
+    - For anything hazardous (synthesis of toxic, controlled, or explosive substances), decline and explain briefly.
+
+ui:
+  theme: { name: chem, base: dark, accent: "okhsl(175 60% 66%)", border: "okhsl(190 50% 62%)" }
+  quiet_startup: header
+  header:
+    art: benzene
+    hint: "Try: find molecules similar to aspirin"
+  web:
+    port: 4317
+    headline: "What are we researching today?"
+    subtitle: "Look up compounds, compare them, and explore their structures in 3D."
+    placeholder: "Ask about a molecule, a comparison, or analogs..."
+  views:
+    - { id: molecule, shows: [molecule_lookup], panel: right }
+    - { id: data-table, shows: [molecule_compare, similar_molecules] }

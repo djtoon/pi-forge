@@ -1,0 +1,271 @@
+{
+	"type": "object",
+	"required": [
+		"name"
+	],
+	"properties": {
+		"name": {
+			"type": "string",
+			"pattern": "^[a-z][a-z0-9-]{0,39}$",
+			"description": "CLI name and config folder (~/.forge/<name>)"
+		},
+		"title": {
+			"type": "string"
+		},
+		"description": {
+			"type": "string"
+		},
+		"pi_version": {
+			"type": "string"
+		},
+		"model": {
+			"type": "object",
+			"properties": {
+				"provider": {
+					"type": "string"
+				},
+				"id": {
+					"type": "string"
+				},
+				"thinking": {
+					"anyOf": [
+						{
+							"type": "string",
+							"const": "off"
+						},
+						{
+							"type": "string",
+							"const": "minimal"
+						},
+						{
+							"type": "string",
+							"const": "low"
+						},
+						{
+							"type": "string",
+							"const": "medium"
+						},
+						{
+							"type": "string",
+							"const": "high"
+						},
+						{
+							"type": "string",
+							"const": "xhigh"
+						},
+						{
+							"type": "string",
+							"const": "max"
+						}
+					],
+					"description": "Reasoning effort"
+				}
+			},
+			"additionalProperties": false
+		},
+		"tools": {
+			"type": "object",
+			"properties": {
+				"builtin": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"description": "pi built-in tools to enable"
+				},
+				"custom": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"description": "Tools registered by custom/extensions"
+				},
+				"plan": {
+					"type": "boolean",
+					"description": "Built-in update_plan tool: a live checklist the user sees. Default true."
+				}
+			},
+			"additionalProperties": false
+		},
+		"guards": {
+			"type": "object",
+			"properties": {
+				"protected_paths": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"description": "Globs write/edit may not touch"
+				},
+				"confirm_bash": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"description": "Substrings that need confirmation"
+				}
+			},
+			"additionalProperties": false
+		},
+		"prompt": {
+			"type": "object",
+			"properties": {
+				"system": {
+					"type": "string",
+					"description": "Appended to pi's system prompt"
+				}
+			},
+			"additionalProperties": false
+		},
+		"ui": {
+			"type": "object",
+			"properties": {
+				"theme": {
+					"anyOf": [
+						{
+							"type": "string",
+							"description": "Built-in theme (system, dark, light) or a theme in templates/themes/"
+						},
+						{
+							"type": "object",
+							"required": [
+								"name",
+								"base",
+								"accent"
+							],
+							"properties": {
+								"name": {
+									"type": "string",
+									"pattern": "^[a-z][a-z0-9-]*$"
+								},
+								"base": {
+									"anyOf": [
+										{
+											"type": "string",
+											"const": "dark"
+										},
+										{
+											"type": "string",
+											"const": "light"
+										}
+									]
+								},
+								"accent": {
+									"type": "string",
+									"description": "Color: #hex, okhsl(h s% l%), or oklch(...)"
+								},
+								"border": {
+									"type": "string"
+								}
+							},
+							"additionalProperties": false,
+							"description": "Generated theme: a base theme with a new accent color"
+						}
+					]
+				},
+				"quiet_startup": {
+					"anyOf": [
+						{
+							"type": "boolean"
+						},
+						{
+							"type": "string",
+							"const": "header"
+						}
+					]
+				},
+				"header": {
+					"type": "object",
+					"properties": {
+						"art": {
+							"type": "string"
+						},
+						"hint": {
+							"type": "string"
+						}
+					},
+					"additionalProperties": false
+				},
+				"web": {
+					"type": "object",
+					"properties": {
+						"port": {
+							"type": "integer",
+							"minimum": 1024,
+							"maximum": 65535
+						},
+						"layout": {
+							"type": "string"
+						},
+						"headline": {
+							"type": "string",
+							"description": "Welcome screen headline, e.g. 'Build your next agent harness.'"
+						},
+						"subtitle": {
+							"type": "string",
+							"description": "Line under the headline. Default: description"
+						},
+						"placeholder": {
+							"type": "string",
+							"description": "Message box placeholder"
+						},
+						"eyebrow": {
+							"type": "string",
+							"description": "Small mono label above the headline, e.g. AI HARNESS BUILDER"
+						},
+						"tagline": {
+							"type": "string",
+							"description": "Mono line under the welcome cards, e.g. Build. Validate. Update."
+						}
+					},
+					"additionalProperties": false
+				},
+				"views": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"required": [
+							"id",
+							"shows"
+						],
+						"properties": {
+							"id": {
+								"type": "string",
+								"description": "View id from templates/views/ or custom/views/"
+							},
+							"shows": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								},
+								"description": "Tools whose results render in this view. Supports * wildcards."
+							},
+							"panel": {
+								"anyOf": [
+									{
+										"type": "string",
+										"const": "right"
+									},
+									{
+										"type": "string",
+										"const": "left"
+									},
+									{
+										"type": "string",
+										"const": "bottom"
+									}
+								],
+								"description": "Also pin the latest result as a panel (web) / widget (terminal)"
+							}
+						},
+						"additionalProperties": false
+					}
+				}
+			},
+			"additionalProperties": false
+		}
+	},
+	"additionalProperties": false,
+	"$id": "https://forge.local/harness.schema.json",
+	"title": "pi-Forge harness.yaml"
+}

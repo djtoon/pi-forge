@@ -1,0 +1,25 @@
+{
+	"explanation": "Building the bracket in three passes.",
+	"steps": [
+		{
+			"step": "Measure the pipe and screw spacing",
+			"status": "done"
+		},
+		{
+			"step": "Model the bracket with M4 holes",
+			"status": "done"
+		},
+		{
+			"step": "Check printability and overhangs",
+			"status": "in_progress"
+		},
+		{
+			"step": "Estimate filament and print time",
+			"status": "pending"
+		},
+		{
+			"step": "Export STL",
+			"status": "pending"
+		}
+	]
+}

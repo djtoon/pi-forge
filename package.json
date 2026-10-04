@@ -1,0 +1,47 @@
+{
+	"name": "pi-forge",
+	"version": "0.1.0",
+	"private": true,
+	"description": "pi-Forge: an agent harness that builds agent harnesses, on top of pi",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/djtoon/forge.git"
+	},
+	"homepage": "https://github.com/djtoon/forge#readme",
+	"bugs": {
+		"url": "https://github.com/djtoon/forge/issues"
+	},
+	"keywords": [
+		"ai",
+		"agent",
+		"harness",
+		"pi",
+		"llm",
+		"codegen",
+		"web-ui"
+	],
+	"type": "module",
+	"workspaces": [
+		"packages/*"
+	],
+	"engines": {
+		"node": ">=22.18"
+	},
+	"scripts": {
+		"check": "tsc -p .",
+		"schema": "node scripts/export-schema.ts",
+		"gen": "node packages/forge-gen/src/cli.ts",
+		"forge": "node forge/bin/forge.ts",
+		"chem": "node harnesses/chem/bin/chem.ts",
+		"upgrade": "node scripts/upgrade.ts",
+		"check-view": "node packages/forge-gen/src/check-view.ts",
+		"package": "node packages/forge-gen/src/pack.ts",
+		"doctor": "node scripts/doctor.ts",
+		"verify": "npm run check && node scripts/upgrade.ts --check"
+	},
+	"devDependencies": {
+		"@types/node": "26.6.4",
+		"typescript": "7.0.2"
+	}
+}

@@ -1,0 +1,17 @@
+{
+	"title": "Example images",
+	"images": [
+		{
+			"url": "https://picsum.photos/seed/forge-a/400/400",
+			"caption": "first"
+		},
+		{
+			"url": "https://picsum.photos/seed/forge-b/400/400",
+			"caption": "second"
+		},
+		{
+			"url": "https://picsum.photos/seed/forge-c/400/400",
+			"caption": "third"
+		}
+	]
+}

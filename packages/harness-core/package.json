@@ -1,0 +1,16 @@
+{
+	"name": "@forge/harness-core",
+	"version": "0.1.0",
+	"private": true,
+	"license": "MIT",
+	"type": "module",
+	"description": "Launches a pi-Forge harness directory on top of pi",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@earendil-works/pi-coding-agent": "1.0.0",
+		"@forge/harness-spec": "*",
+		"@forge/harness-web": "*"
+	}
+}

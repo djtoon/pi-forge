@@ -1,0 +1,29 @@
+{
+	"generator": "forge-gen@0.1.0",
+	"files": {
+		"package.json": "13e2a40fb284630b",
+		"bin/forge.ts": "dc54a0288ff9bbc5",
+		"themes/forge.json": "79b1dad515664970",
+		"forge_modules/ui/header.ts": "b38c4ab87cfaba48",
+		"extensions/forge-header.ts": "416f88e4f7257cdc",
+		"forge_modules/guards/guards.ts": "331aa83ba9b8f453",
+		"extensions/forge-guards.ts": "a7a03c56a436b7c8",
+		"forge_modules/views/contract.ts": "7c9fb4353aa5839b",
+		"forge_modules/ui/views.ts": "106df82a93c791a4",
+		"forge_modules/views/data-table/sample.json": "4075c3472209ed58",
+		"forge_modules/views/data-table/tui.ts": "19e863e61c297126",
+		"forge_modules/views/data-table/types.ts": "4f9d2068d9fdf4a2",
+		"forge_modules/views/data-table/view.json": "f12c85ccdaf4f843",
+		"forge_modules/views/data-table/web.js": "7f5b1fa6015e8205",
+		"forge_modules/views/registry.ts": "0c55751cbdfab321",
+		"extensions/forge-views.ts": "0c94b661aad6493b",
+		"forge_modules/plan/plan.ts": "b3d2243aa9590c48",
+		"forge_modules/views/plan/sample.json": "8aacc8dee41039ed",
+		"forge_modules/views/plan/tui.ts": "34c18e3523635b89",
+		"forge_modules/views/plan/types.ts": "e445ca143c968647",
+		"forge_modules/views/plan/view.json": "a7566ed88f4ee96d",
+		"forge_modules/views/plan/web.js": "40cc44832a2a6c2c",
+		"extensions/forge-plan.ts": "f8162acaf5033b2b",
+		"APPEND_SYSTEM.md": "efdabb60b3dc639f"
+	}
+}

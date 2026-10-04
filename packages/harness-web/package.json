@@ -1,0 +1,15 @@
+{
+	"name": "@forge/harness-web",
+	"version": "0.1.0",
+	"private": true,
+	"license": "MIT",
+	"type": "module",
+	"description": "Browser UI for any pi-Forge harness: bridges the harness's RPC mode to a local web page with domain views",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@earendil-works/pi-tui": "1.0.0",
+		"@forge/harness-spec": "*"
+	}
+}
