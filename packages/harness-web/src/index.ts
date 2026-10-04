@@ -278,14 +278,20 @@ export function readBrand(harnessDir: string): Brand {
 	return { mark: Boolean(mark), wordmark: Boolean(wordmark), wordmarkRatio: box.h ? box.w / box.h : 1 };
 }
 
-/** Favicon: the mark in paper on a rounded ink tile (falls back to the generic agent icon). */
+/** Favicon: the mark in ink on a rounded paper tile, like the logo (falls back to the generic agent icon). */
 function brandFavicon(harnessDir: string): string | undefined {
 	const mark = brandFile(harnessDir, "mark");
 	if (!mark) return undefined;
+	const ink = "#161615";
 	const svg = readFileSync(mark, "utf8");
-	const inner = svg.replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "");
+	// Marks are silhouettes: whatever colors the file uses, paint every filled or stroked shape in ink.
+	const inner = svg
+		.replace(/^[\s\S]*?<svg[^>]*>/, "")
+		.replace(/<\/svg>\s*$/, "")
+		.replace(/\b(fill|stroke)="(?!none)[^"]*"/g, `$1="${ink}"`)
+		.replace(/\b(fill|stroke)\s*:\s*(?!none)[^;"]+/g, `$1:${ink}`);
 	const { viewBox } = svgBox(svg);
-	return `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#161615"/><svg x="12" y="12" width="40" height="40" viewBox="${viewBox}" fill="#f5f4ee" color="#f5f4ee" style="color:#f5f4ee">${inner}</svg></svg>`;
+	return `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#f5f4ee"/><svg x="10" y="10" width="44" height="44" viewBox="${viewBox}" fill="${ink}" color="${ink}" shape-rendering="crispEdges">${inner}</svg></svg>`;
 }
 
 // -----------------------------------------------------------------------------

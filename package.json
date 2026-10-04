@@ -6,11 +6,11 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/djtoon/forge.git"
+		"url": "git+https://github.com/djtoon/pi-forge.git"
 	},
-	"homepage": "https://github.com/djtoon/forge#readme",
+	"homepage": "https://github.com/djtoon/pi-forge#readme",
 	"bugs": {
-		"url": "https://github.com/djtoon/forge/issues"
+		"url": "https://github.com/djtoon/pi-forge/issues"
 	},
 	"keywords": [
 		"ai",

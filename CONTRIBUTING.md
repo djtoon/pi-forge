@@ -5,7 +5,7 @@ Thanks for helping! Bug reports, new views, tool templates, docs and fixes are a
 ## Setup
 
 ```bash
-git clone https://github.com/djtoon/forge.git pi-forge
+git clone https://github.com/djtoon/pi-forge.git
 cd pi-forge
 npm install
 npm run doctor

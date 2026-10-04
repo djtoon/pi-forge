@@ -22,7 +22,7 @@ The command is `forge`.
 **You need:** [Node.js](https://nodejs.org) 22.18 or newer, [Git](https://git-scm.com) (on Windows, Git for Windows, whose Git Bash the agent uses), and an API key for a model provider. [Bun](https://bun.sh) is optional and only needed to package harnesses as programs.
 
 ```bash
-git clone https://github.com/djtoon/forge.git pi-forge
+git clone https://github.com/djtoon/pi-forge.git
 cd pi-forge
 npm install
 npm run doctor            # checks Node, Git Bash, Bun and your model provider
