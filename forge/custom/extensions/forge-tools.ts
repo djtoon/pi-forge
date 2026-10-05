@@ -11,9 +11,11 @@ import {
 	availableViews,
 	formatIssues,
 	type HarnessSpec,
+	listSkills,
 	readSpecFile,
 	validateSpec,
 } from "@forge/harness-spec";
+import { harnessCredentials } from "@forge/harness-web";
 import type { DataTableData } from "../../forge_modules/views/data-table/types.ts";
 import { viewResult, withViews } from "../../forge_modules/views/registry.ts";
 
@@ -264,7 +266,8 @@ const Question = Type.Object({
 		),
 	),
 	multi: Type.Optional(Type.Boolean({ description: "Allow picking several options" })),
-	allow_other: Type.Optional(Type.Boolean({ description: "Offer a free-text 'Other…' choice. Default true." })),
+	allow_other: Type.Optional(Type.Boolean({ description: "Ignored: every question with options also takes a typed answer." })),
+	optional: Type.Optional(Type.Boolean({ description: "The user may leave it empty" })),
 	placeholder: Type.Optional(Type.String({ description: "Hint for free-text questions" })),
 });
 
@@ -282,8 +285,17 @@ interface QuestionSpec {
 	options?: { label: string; description?: string }[];
 	multi?: boolean;
 	allow_other?: boolean;
+	optional?: boolean;
 	placeholder?: string;
 }
+
+/** Added to every questionnaire: room for whatever the questions missed. */
+const ANYTHING_ELSE: QuestionSpec = {
+	id: "anything_else",
+	prompt: "Anything else I should know that these questions didn't cover?",
+	placeholder: "Requirements, examples, things to avoid, links… or leave empty",
+	optional: true,
+};
 
 /** Web UI: the whole questionnaire as one form (checkboxes, select all, back/next). undefined = cancelled. */
 async function askWithForm(ctx: ExtensionContext, title: string | undefined, questions: QuestionSpec[]): Promise<string[] | undefined> {
@@ -312,7 +324,7 @@ async function askStepByStep(ctx: ExtensionContext, title: string | undefined, q
 		const q = questions[i] as QuestionSpec;
 		const heading = `${prefix}${q.prompt}${questions.length > 1 ? ` (${i + 1}/${questions.length})` : ""}`;
 		const options = q.options ?? [];
-		const allowOther = q.allow_other !== false;
+		const allowOther = true;
 		const back = i > 0 ? [BACK] : [];
 		let answer: string | undefined;
 		let goBack = false;
@@ -320,7 +332,7 @@ async function askStepByStep(ctx: ExtensionContext, title: string | undefined, q
 		if (options.length === 0) {
 			const typed = await ctx.ui.input(heading, `${q.placeholder ?? ""}${i > 0 ? "  (type < to go back)" : ""}`.trim());
 			if (typed?.trim() === "<" && i > 0) goBack = true;
-			else answer = typed;
+			else answer = typed ?? (q.optional ? "" : undefined);
 		} else if (!q.multi) {
 			const choice = await ctx.ui.select(heading, [...options.map(label), ...(allowOther ? [OTHER] : []), ...back]);
 			if (choice === BACK) goBack = true;
@@ -370,6 +382,7 @@ const forgeAsk = defineTool({
 	description:
 		"Ask the user one or more questions with real dialogs (works in the terminal and the web UI). Use it for the harness interview: " +
 		"group 2-5 related questions per call, give options with the recommended one first, and keep free text for names and descriptions. " +
+		"Every question with options also lets the user type their own answer, and an open 'anything else?' question is added at the end automatically: read it and act on it. " +
 		"Fails in headless mode; then ask in your reply instead.",
 	parameters: Type.Object({
 		title: Type.Optional(Type.String({ description: "Shown before each question, e.g. 'Interview 2/6: tools'" })),
@@ -378,7 +391,8 @@ const forgeAsk = defineTool({
 	executionMode: "sequential",
 	async execute(_id, params, _signal, _onUpdate, ctx) {
 		if (!ctx.hasUI) throw new Error("No interactive UI (print/json mode). Ask these questions in your reply instead.");
-		const questions = params.questions as QuestionSpec[];
+		const asked = params.questions as QuestionSpec[];
+		const questions = asked.some((q) => q.id === ANYTHING_ELSE.id) ? asked : [...asked, ANYTHING_ELSE];
 		const values =
 			ctx.mode === "rpc" ? await askWithForm(ctx, params.title, questions) : await askStepByStep(ctx, params.title, questions);
 
@@ -386,7 +400,11 @@ const forgeAsk = defineTool({
 			const table: DataTableData = { title: "Interview cancelled", columns: ["Id", "Question", "Answer"], rows: questions.map((q) => [q.id, q.prompt, "(cancelled)"]) };
 			return viewResult("The user cancelled the questions. Ask whether to continue, or proceed with sensible defaults if they said so earlier.", "data-table", table);
 		}
-		const answers = questions.map((q, i) => ({ id: q.id, prompt: q.prompt, answer: values[i]?.trim() || "(empty)" }));
+		const answers = questions.map((q, i) => ({
+			id: q.id,
+			prompt: q.prompt,
+			answer: values[i]?.trim() || (q.id === ANYTHING_ELSE.id ? "(nothing to add)" : "(skipped: use your recommended default)"),
+		}));
 		const table: DataTableData = { title: params.title ?? "Answers", columns: ["Id", "Question", "Answer"], rows: answers.map((a) => [a.id, a.prompt, a.answer]) };
 		return viewResult(`Answers:\n${answers.map((a) => `- ${a.id}: ${a.answer}`).join("\n")}`, "data-table", table);
 	},
@@ -415,6 +433,30 @@ const forgeSmoke = defineTool({
 		const rows: (string | number | null)[][] = [
 			["load", load.ok ? "ok" : "FAILED", `${load.ms} ms`, load.ok ? `model ${load.model}, ${load.commands} commands` : (load.error ?? ""), load.stderr.join(" ⏎ ")],
 		];
+		if (load.ok) {
+			// Every valid SKILL.md must have loaded; pi skips broken ones without an error.
+			const declared = listSkills(dir).filter((sk) => !sk.problem).map((sk) => sk.name as string);
+			const notLoaded = declared.filter((name) => !load.skills.includes(name));
+			rows.push([
+				"skills",
+				notLoaded.length ? "FAILED" : declared.length ? "ok" : "none",
+				null,
+				load.skills.length ? `loaded: ${load.skills.join(", ")}` : "no skills in custom/skills",
+				notLoaded.length ? `not loaded: ${notLoaded.join(", ")} (run forge_validate)` : "",
+			]);
+			const spec = readSpecFile(dir) as HarnessSpec;
+			if (spec.credentials?.length) {
+				const status = harnessCredentials(spec).status();
+				const missing = status.filter((g) => !g.configured && g.fields.some((f) => !f.optional)).map((g) => g.label);
+				rows.push([
+					"keys",
+					missing.length ? "not set" : "ok",
+					null,
+					status.map((g) => `${g.label}: ${g.configured ? "set" : "missing"}`).join(", "),
+					missing.length ? `The user adds them in Settings → ${spec.title ?? spec.name} keys, or with /keys in the terminal. Tools that need them report it clearly until then.` : "",
+				]);
+			}
+		}
 		if (load.ok && params.prompt) {
 			onUpdate?.({ content: [{ type: "text", text: "load ok; running live prompt…" }], details: undefined });
 			const live = await liveCheck(dir, params.prompt);

@@ -223,9 +223,45 @@ function planFiles(spec: HarnessSpec, harnessDir: string): Map<string, string> {
 		files.set("extensions/forge-plan.ts", `${TS_BANNER}import { createPlan } from "../forge_modules/plan/plan.ts";\n\nexport default createPlan();\n`);
 	}
 
-	// System prompt addition: the spec's text, the plan habit, and how views reach the user.
+	// Keys: tools read them with requireKey()/getKey(); users set them in Settings (browser) or /keys (terminal).
+	const credentials = spec.credentials ?? [];
+	if (credentials.length > 0) {
+		copyTemplate("credentials/keys.ts");
+		const keys = credentials.flatMap((g) =>
+			g.fields.map((f) => ({ env: f.env, label: f.label, service: g.label, secret: f.secret !== false, ...(f.optional ? { optional: true } : {}) })),
+		);
+		files.set(
+			"forge_modules/keys.ts",
+			[
+				`${TS_BANNER}import { createKeys } from "./credentials/keys.ts";`,
+				"",
+				`export const keys = createKeys(${tsString({ name: spec.name, title, keys })});`,
+				"",
+				"/** The value of a key from harness.yaml credentials, or undefined. */",
+				"export const getKey = keys.get;",
+				"/** The value of a key from harness.yaml credentials; throws a message telling the user where to add it. */",
+				"export const requireKey = keys.require;",
+				"",
+			].join("\n"),
+		);
+		files.set("extensions/forge-keys.ts", `${TS_BANNER}import { keys } from "../forge_modules/keys.ts";\n\nexport default keys.extension;\n`);
+	}
+
+	// System prompt addition: the spec's text, the plan habit, how views reach the user, and where keys come from.
 	const promptParts: string[] = [];
 	if (spec.prompt?.system) promptParts.push(spec.prompt.system.trim());
+	if (credentials.length > 0) {
+		const lines = credentials.map((g) => {
+			const fields = g.fields.map((f) => `${f.label} (\`${f.env}\`${f.optional ? ", optional" : ""})`).join(", ");
+			return `- **${g.label}**: ${fields}${g.tools?.length ? `, used by ${g.tools.map((t) => `\`${t}\``).join(", ")}` : ""}`;
+		});
+		promptParts.push(
+			`## Keys and settings\n\nSome tools need keys or settings that the user enters themselves:\n${lines.join("\n")}\n\n` +
+				`They are set in **Settings → ${title} keys** in the browser, with the **/keys** command in the terminal, or as environment variables. ` +
+				"When a tool reports a missing key, tell the user exactly which one and where to add it, then continue with what works without it. " +
+				"Never ask the user to paste a key, password or token into the chat, and never print key values.",
+		);
+	}
 	if (planEnabled) {
 		promptParts.push(
 			"## Plans\n\nFor any task with more than two steps, call `update_plan` before you start, with the whole checklist (first step in_progress). " +

@@ -101,7 +101,7 @@ if (!tsc.ok) failures.push("type-check failed");
 heading(`smoke tests${live ? " (load + live)" : " (load)"}`);
 for (const dir of harnessDirs()) {
 	const load = await loadCheck(dir);
-	console.log(`${load.ok ? "ok  " : "FAIL"} load  ${rel(dir)}  ${load.ms} ms  ${load.ok ? `model ${load.model}` : (load.error ?? "")}`);
+	console.log(`${load.ok ? "ok  " : "FAIL"} load  ${rel(dir)}  ${load.ms} ms  ${load.ok ? `model ${load.model}, skills: ${load.skills.join(", ") || "none"}` : (load.error ?? "")}`);
 	for (const line of load.stderr) console.log(`       ${line}`);
 	if (!load.ok) {
 		failures.push(`${rel(dir)}: load check failed`);

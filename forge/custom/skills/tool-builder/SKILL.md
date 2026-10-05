@@ -21,7 +21,13 @@ Copy it to `custom/extensions/`, then adapt. The imports in the templates are al
 - **Register** with `pi.registerTool(withViews(tool))` so results render as views. No UI code in tools.
 - **Errors**: `throw new Error("clear message")` for failures; the model sees it and can recover.
 - **Network**: `fetch` with the `signal` argument and a timeout (`AbortSignal.timeout(20_000)` when no signal).
-- **Secrets**: read from `process.env.NAME`; if missing, throw an error naming the env var. Never hardcode or log secrets.
+- **Keys and settings**: declare every key, account ID, region or program path the tool needs under `credentials:` in
+  harness.yaml (see the `harness-interview` skill for the format). Then read it with
+  `import { getKey, requireKey } from "../../forge_modules/keys.ts";`:
+  `requireKey("SHOPIFY_ACCESS_TOKEN")` returns the value or throws a message telling the user where to add it
+  (Settings → <Title> keys, `/keys`, or the environment variable); `getKey("BLENDER_PATH")` for optional ones.
+  Call them inside `execute` (not at import time), so a key added later works without a restart.
+  Never hardcode, log, or return key values. `forge_validate` warns about any `process.env.X` that isn't declared.
 - **Annotations**: `{ readOnlyHint: true }` for tools that only read; `{ destructiveHint: true }` for anything that deletes or sends.
 - **Names**: snake_case verb_noun, matching `tools.custom` in harness.yaml.
 

@@ -52,6 +52,13 @@ prompt:
     not to invent it. Build real, working implementations (local code, public APIs, installed programs) rather than stubs.
     If a tool needs a key or program the user lacks, say so, make the tool report that clearly, and keep the rest working.
 
+    ## Keys and skills belong to the harness
+    - Every key, account ID, region or program path a harness's tools need goes under `credentials:` in its harness.yaml.
+      The user then sets it in that harness's Settings page (or `/keys` in its terminal), and tools read it with
+      `requireKey`/`getKey` from `forge_modules/keys.ts`. Never ask the user to type a key into the chat.
+    - Every harness gets 2-5 skills in `custom/skills/<name>/SKILL.md`: the domain's workflows, checklists, standards
+      and reference knowledge, written for that harness's agent and naming its tools. They load automatically.
+
     ## Models
     `forge_init` gives a new harness the model you are running on; keep it unless the user asks otherwise.
     The spec model applies only where its provider has credentials; elsewhere pi uses the provider the user set up.
@@ -60,6 +67,7 @@ prompt:
     - `harness-interview`: build a new harness by interviewing the user (`forge_ask`).
     - `harness-update`: change an existing harness.
     - `tool-builder`: write a custom tool. `view-builder`: write a new domain view.
+    - `skill-builder`: write a skill for a harness's agent.
 
     ## Workflow
     1. Inspect with `forge_list` (harnesses, views, themes, art) before proposing anything.

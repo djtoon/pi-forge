@@ -25,3 +25,6 @@ harnesses/*
 # Local notes and source images (docs/ has the published copies)
 /plan.md
 /poster.png
+
+# Work output from harnesses run in the repo root
+/houses/

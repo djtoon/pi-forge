@@ -97,6 +97,9 @@ you ⇄ pi-Forge (interview, plan, tools, views, logo)
 - **`custom/` is yours.** Tools go in `custom/extensions/*.ts`, helpers in `custom/lib/`, domain views in `custom/views/`, the logo in `custom/brand/mark.svg`, and skills in `custom/skills/`. The generator never touches this folder.
 - **Everything else is generated.** Editing a generated file by hand is detected and refused; change the spec or the template instead.
 - **Views:** a tool returns `viewResult(text, viewId, data)`. The model reads `text`. The browser draws the view's `web.js`, the terminal draws its `tui.ts`, and JSON/RPC clients get `data`. Views can also stay pinned in the side card.
+- **Keys:** tools that need an API key, an account ID or a program path declare it under `credentials:` in the spec. Each harness's **Settings** page then has a card per service (with a "Get a key" link and a *Needed* badge until it's set), the terminal has `/keys`, and headless runs read the environment variables. Saved keys live in `~/.forge/<name>/credentials.json`, are given to that harness alone, and the browser only sees masked previews. Tools read them with `requireKey("NAME")`, which tells the user where to add a missing key.
+- **Skills:** each harness's know-how (workflows, checklists, standards, reference knowledge) lives in `custom/skills/<name>/SKILL.md`. pi-Forge writes 2-5 per harness; the agent loads one when a task matches, `/skill:<name>` runs one directly, and the Tools page lists them. A harness loads only its own skills, not ones installed elsewhere on your machine.
+- **Add to harness:** every harness's browser UI has an **Add to <Title>** page in the sidebar. It's a chat with pi-Forge's agent, scoped to that one harness, for growing it: new tools, views, data sources with their keys, skills, fixes. pi-Forge writes, validates, generates and smoke-tests the change, then the harness's own agent reloads by itself, so the new tool works in the next message. These chats are kept per harness (`~/.forge/<name>/builder-sessions`). The page needs this repo, so packaged programs don't show it.
 - **Plans:** every harness has an `update_plan` tool. For multi-step work, the agent posts a checklist and ticks it off as it goes. You see it beside the chat, or above the input in the terminal.
 - **Models:** a spec names a preferred model, used when its provider has credentials on your machine. A Claude model on Bedrock falls back to the same model from Anthropic when you have an Anthropic key. Otherwise pi picks a model from the provider you set up. Switch models any time from the model dropdown.
 
@@ -126,6 +129,20 @@ ui:
     - { id: data-table, shows: [molecule_compare, similar_molecules] }
 ```
 
+A harness whose tools need keys adds a `credentials:` section:
+
+```yaml
+credentials:
+  - id: openweather
+    label: OpenWeather
+    note: Free tier is enough. Used for live forecasts.
+    url: https://home.openweathermap.org/api_keys
+    tools: [get_forecast]
+    fields:
+      - { env: OPENWEATHER_API_KEY, label: API key }
+      - { env: OPENWEATHER_UNITS, label: Units, secret: false, optional: true, placeholder: metric }
+```
+
 ### pi-Forge's tools
 
 | Tool | What it does |
@@ -140,7 +157,9 @@ ui:
 | `forge_promote_view` | Moves a custom view into `templates/views/` so every harness can use it |
 | `forge_package` | Builds a standalone program from a harness |
 
-Its skills are `harness-interview`, `harness-update`, `tool-builder` and `view-builder`, in `forge/custom/skills/`.
+Its skills are `harness-interview`, `harness-update`, `tool-builder`, `view-builder` and `skill-builder`, in `forge/custom/skills/`.
+
+When it asks you questions, every question also takes a typed answer, and each round ends with an open "anything else?" box for whatever the questions didn't cover.
 
 ---
 
@@ -175,6 +194,9 @@ Harnesses you build are listed in `.gitignore`, so they stay local unless you ch
 
 ## Troubleshooting
 
+- **"It's not answering":** look at the status line at the bottom of the chat. It shows what the agent is doing right now (thinking, writing a file, running a tool, writing the reply) and for how long, and it survives a page refresh. Long thinking or a big file write can take minutes. A message you send meanwhile shows as *Queued* and reaches the agent after its current step.
+- **A tool says a key is missing:** add it in Settings → *<Harness> keys* (browser), with `/keys` (terminal), or as the environment variable it names.
+
 - **"No model" or auth errors:** run `npm run doctor`, then add a key in Settings or set the environment variable. Check the model dropdown in the message box.
 - **Windows: the agent can't run shell commands:** install Git for Windows. pi uses its Git Bash.
 - **A harness won't start after you edit its tools:** ask pi-Forge to `forge_smoke` it. The load check names the file and line.
@@ -183,7 +205,7 @@ Harnesses you build are listed in `.gitignore`, so they stay local unless you ch
 
 ## Security
 
-Agents run with your user's permissions: they can read and write files and run commands. Guardrails (`guards:` in the spec) ask before writing protected files or running listed commands, and block them when there's no one to ask. The web UI listens only on `127.0.0.1` and needs a per-run token. Provider keys stay on your machine, and the browser only ever sees masked previews. See [SECURITY.md](SECURITY.md).
+Agents run with your user's permissions: they can read and write files and run commands. Guardrails (`guards:` in the spec) ask before writing protected files or running listed commands, and block them when there's no one to ask. The web UI listens only on `127.0.0.1` and needs a per-run token. Provider keys and each harness's tool keys stay on your machine, and the browser only ever sees masked previews. See [SECURITY.md](SECURITY.md).
 
 ## Contributing
 

@@ -7,7 +7,9 @@ import type { DataTableData } from "../../forge_modules/views/data-table/types.t
 import { viewResult, withViews } from "../../forge_modules/views/registry.ts";
 
 const BASE_URL = "https://api.example.com/v1"; // TODO: the API base URL
-const TOKEN_ENV = "EXAMPLE_API_TOKEN"; // TODO: env var with the API token, or remove auth
+// TODO: the token's variable, declared under `credentials:` in harness.yaml so users can set it in Settings.
+// Once it's declared and generated, prefer: import { requireKey } from "../../forge_modules/keys.ts";
+const TOKEN_ENV = "EXAMPLE_API_TOKEN";
 
 interface Item {
 	id: string;
@@ -18,7 +20,7 @@ interface Item {
 
 async function api<T>(path: string, signal?: AbortSignal): Promise<T> {
 	const token = process.env[TOKEN_ENV];
-	if (!token) throw new Error(`Set the ${TOKEN_ENV} environment variable to use this tool.`);
+	if (!token) throw new Error(`${TOKEN_ENV} is not set. Ask the user to add it in Settings (this harness's keys) or with /keys.`);
 	const res = await fetch(`${BASE_URL}${path}`, {
 		headers: { authorization: `Bearer ${token}`, accept: "application/json" },
 		signal: signal ?? AbortSignal.timeout(20_000),

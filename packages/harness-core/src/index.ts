@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { main } from "@earendil-works/pi-coding-agent";
 import { type HarnessSpec, loadSpec, themeName } from "@forge/harness-spec";
-import { applySavedCredentials, isPackagedBinary, startWeb } from "@forge/harness-web";
+import { applySavedCredentials, harnessCredentials, isPackagedBinary, startWeb } from "@forge/harness-web";
 
 export type { HarnessSpec };
 
@@ -134,8 +134,10 @@ export async function runHarness(harnessDir: string, args: string[] = process.ar
 	const dir = resolve(harnessDir);
 	const spec = loadSpec(dir);
 	const agentDir = getHarnessAgentDir(spec.name);
-	// Provider keys saved in Settings (~/.forge/credentials.json) apply to every harness and mode.
+	// Provider keys saved in Settings (~/.forge/credentials.json) apply to every harness and mode;
+	// this harness's tool keys (credentials: in its spec, ~/.forge/<name>/credentials.json) apply to it alone.
 	applySavedCredentials();
+	harnessCredentials(spec).apply();
 	syncAgentDir(dir, spec, agentDir);
 
 	process.env.PI_CODING_AGENT_DIR = agentDir;
@@ -160,7 +162,18 @@ export async function runHarness(harnessDir: string, args: string[] = process.ar
 		return;
 	}
 
-	await main(args);
+	await main([...skillArgs(dir, args), ...args]);
+}
+
+/**
+ * A harness loads its own skills (custom/skills) and nothing else: without this, pi also picks up skills installed
+ * on the machine (~/.agents/skills, a project's .agents/skills), so every harness would carry unrelated know-how.
+ * Passing --no-skills or --skill yourself keeps pi's own behavior.
+ */
+function skillArgs(harnessDir: string, args: string[]): string[] {
+	if (args.includes("--no-skills") || args.includes("-ns") || args.includes("--skill")) return [];
+	const own = join(harnessDir, "custom", "skills");
+	return existsSync(own) ? ["--no-skills", "--skill", own] : ["--no-skills"];
 }
 
 /**

@@ -77,6 +77,37 @@ A view folder has `view.json` (metadata), `types.ts`, `tui.ts`, `web.js` and `sa
 
 Every harness has an `update_plan` tool (`templates/plan/plan.ts`). It returns a `plan` view. The browser shows the latest plan in the side card with ticked steps, and the terminal shows it as a widget above the input.
 
+## Keys
+
+`credentials:` in the spec lists the services a harness's tools need, each with its fields (environment variable, label, secret or not, optional or not). From it:
+- `forge_modules/keys.ts` gives tools `requireKey(env)` and `getKey(env)`. A missing required key throws a message naming the key and where to add it.
+- `extensions/forge-keys.ts` adds a `/keys` command, which sets values from any UI.
+- The browser's Settings page gets a card per service. The server's `/api/credentials` returns masked status for both the shared model providers and this harness's keys.
+- The system prompt tells the agent which tools need which keys, and never to ask for a key in the chat.
+
+Values are saved in `~/.forge/<name>/credentials.json` (owner-only). `runHarness` copies them into the process environment at startup, after the shared provider keys, so they reach only that harness. `forge_validate` warns about any upper-case `process.env.X` in `custom/` code that isn't declared, and rejects system variables and model-provider keys.
+
+## Skills
+
+A harness's skills live in `custom/skills/<name>/SKILL.md` (pi's Agent Skills format). The launcher passes `--no-skills --skill <harness>/custom/skills`, so a harness loads exactly its own skills, never ones installed elsewhere on the machine (`~/.agents/skills`). `forge_validate` reports any SKILL.md that pi would skip: no frontmatter, a missing description, a bad name, or a duplicate name. `forge_smoke` lists the skills that actually loaded. The browser's Tools page lists them, and `/skill:<name>` runs one.
+
+## Add to harness
+
+In a pi-Forge checkout, a harness's web server runs two agents, each its own *channel* (process, replay log, browsers):
+- **main:** the harness in RPC mode.
+- **builder:** pi-Forge in RPC mode, started on first use. It gets `--append-system-prompt` scoping it to this harness, and `--session-dir ~/.forge/<name>/builder-sessions`.
+
+The page at `/build` is the same app pointed at the builder (`?agent=builder` on `/api/rpc`, `/api/events` and `/api/sessions`). When a builder run ends with the harness changed, the server:
+1. re-reads the spec and views;
+2. restarts the main agent once it's idle, reopening the chat it last reported;
+3. sends `forge_harness_updated` to both pages, so they refresh their config.
+
+The change is detected by comparing a signature of `harness.yaml`, the manifest and `custom/` before and after the run.
+
+## Live status in the browser
+
+The server relays pi's RPC events over SSE. It keeps the ones that matter for a replay, stamped with the time they happened (`_ts`): run, tool, queue and phase-start events, but not every text delta. It also tracks the tool call being streamed (name, target file or command, size). So a page that loads mid-run can show the current step, how long it has run, and messages queued while the agent works.
+
 ## Guards
 
 `guards:` in the spec become a `tool_call` hook (`templates/guards/guards.ts`):

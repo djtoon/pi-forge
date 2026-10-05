@@ -73,7 +73,7 @@ function aiState(state, size, opts = {}) {
 // ---------------------------------------------------------------------------
 
 async function rpc(record) {
-	const res = await fetch("/api/rpc", {
+	const res = await fetch(`/api/rpc${AGENT_QUERY}`, {
 		method: "POST",
 		headers: { "content-type": "application/json", "x-forge-token": token },
 		body: JSON.stringify(record),
@@ -163,6 +163,9 @@ function textOf(content) {
 // ---------------------------------------------------------------------------
 
 const config = await (await fetch("/api/config")).json();
+// "Add to <harness>" (/build): the same app, talking to pi-Forge scoped to this harness instead of the harness itself.
+const BUILD = location.pathname === "/build" && Boolean(config.builder?.available);
+const AGENT_QUERY = BUILD ? "?agent=builder" : "";
 const root = document.documentElement;
 const t = config.theme;
 // The harness accent colors the send button and highlights; everything else is the system palette.
@@ -250,7 +253,8 @@ const app = $("#app");
 const main = $("#main");
 const chat = $("#chat");
 const scroller = $("#scroller");
-const panelViews = new Map(config.views.filter((v) => v.panel).map((v) => [v.id, v]));
+// The harness's pinned panels show its own results, so not on the builder page.
+const panelViews = new Map(BUILD ? [] : config.views.filter((v) => v.panel).map((v) => [v.id, v]));
 let mode = "chat"; // chat | harnesses | views | tools
 let chatTitle = "New chat";
 let panelsOpen = window.innerWidth >= 1300;
@@ -264,6 +268,24 @@ const PAGES = {
 };
 $("#go-harnesses").hidden = !config.isForge;
 $("#go-tools").hidden = config.isForge;
+$("#go-build").hidden = !config.builder?.available;
+$("#go-build-label").textContent = config.builder?.title ?? "Add to harness";
+$("#go-build").classList.toggle("active", BUILD);
+$("#go-back").hidden = !BUILD;
+$("#go-back-label").textContent = `Back to ${config.title}`;
+$("#go-build").onclick = () => {
+	if (BUILD) setMode("chat");
+	else location.href = "/build";
+};
+$("#go-back").onclick = () => {
+	location.href = "/";
+};
+app.classList.toggle("build-mode", BUILD);
+if (BUILD) {
+	$("#crumb-root").textContent = config.builder.title;
+	$("#input").placeholder = `Describe a tool, view or data source to add to ${config.title}…`;
+	document.title = `${config.builder.title} · pi-Forge`;
+}
 
 function setCrumb(text) {
 	$("#chat-title").textContent = text;
@@ -283,7 +305,7 @@ function setMode(next) {
 		scroller.scrollTop = 0;
 	}
 	updateSide();
-	history.replaceState(null, "", next === "views" ? "/preview" : "/");
+	history.replaceState(null, "", BUILD ? "/build" : next === "views" ? "/preview" : "/");
 }
 
 /** The side card has something to show: a plan, outputs, panel views, or extension widgets. */
@@ -498,6 +520,15 @@ async function renderSettings(page) {
 	}
 	appearance.append(seg);
 
+	// This harness's keys (credentials: in its harness.yaml)
+	const harnessKeys = section(
+		`${config.title} keys`,
+		`Keys and settings ${config.title}'s tools need. Stored only on this computer (~/.forge/${config.name}/credentials.json), given to this harness alone. Saving restarts the agent; the open chat continues.`,
+	);
+	const harnessGrid = el("div", "provider-grid");
+	harnessKeys.append(harnessGrid);
+	harnessKeys.hidden = true;
+
 	// Model providers
 	const providers = section(
 		"Model providers",
@@ -513,32 +544,58 @@ async function renderSettings(page) {
 	kv.append(el("dt", "", "Harness"), el("dd", "", `${config.title} (${config.name})`));
 	about.append(kv);
 
-	page.append(appearance, providers, about);
+	page.append(appearance, harnessKeys, providers, about);
 
 	const [statusRes, models] = await Promise.all([
 		fetch("/api/credentials", { headers: { "x-forge-token": token } }),
 		call({ type: "get_available_models" }),
 	]);
-	const status = statusRes.ok ? await statusRes.json() : [];
+	const status = statusRes.ok ? await statusRes.json() : { providers: [], harness: [] };
 	const counts = {};
 	for (const m of models.success ? (models.data.models ?? []) : []) counts[m.provider] = (counts[m.provider] ?? 0) + 1;
-	for (const p of status) grid.append(providerCard(p, counts[p.id] ?? 0));
+	for (const p of status.providers ?? []) grid.append(providerCard(p, counts[p.id] ?? 0));
+	for (const g of status.harness ?? []) harnessGrid.append(providerCard(g, 0, "harness"));
+	harnessKeys.hidden = !(status.harness ?? []).length;
+	if (pendingSettingsFocus === "keys" && !harnessKeys.hidden) harnessKeys.scrollIntoView({ block: "start" });
+	pendingSettingsFocus = "";
 }
 
-function providerCard(p, modelCount) {
+let pendingSettingsFocus = "";
+
+function providerCard(p, modelCount, scope = "providers") {
 	const card = el("div", "card provider");
 	const head = el("div", "card-head");
 	head.append(el("b", "", p.label));
 	const saved = p.fields.some((f) => f.source === "saved");
 	const fromEnv = p.fields.some((f) => f.source === "environment");
-	let badgeText = "Not set";
-	if (modelCount > 0) badgeText = `Key set · ${modelCount} models`;
-	else if (saved) badgeText = "Saved · no models found";
-	else if (fromEnv) badgeText = "From environment";
-	const badge = el("span", `badge${modelCount > 0 ? " ok" : ""}`, badgeText);
+	let badge;
+	if (scope === "harness") {
+		const required = p.fields.some((f) => !f.optional);
+		if (p.configured) badge = el("span", "badge ok", fromEnv && !saved ? "Set · from environment" : "Set");
+		else badge = el("span", `badge${required ? " warn" : ""}`, required ? "Needed" : "Optional");
+	} else {
+		let badgeText = "Not set";
+		if (modelCount > 0) badgeText = `Key set · ${modelCount} models`;
+		else if (saved) badgeText = "Saved · no models found";
+		else if (fromEnv) badgeText = "From environment";
+		badge = el("span", `badge${modelCount > 0 ? " ok" : ""}`, badgeText);
+	}
 	head.append(badge);
 	card.append(head);
 	if (p.note) card.append(el("p", "note", p.note));
+	if (p.tools?.length || p.url) {
+		const meta = el("div", "meta");
+		for (const t of p.tools ?? []) meta.append(el("span", "chip", t));
+		if (p.url) {
+			const link = el("a", "key-link", "Get a key");
+			link.href = p.url;
+			link.target = "_blank";
+			link.rel = "noopener noreferrer";
+			link.insertAdjacentHTML("beforeend", icon("external-link"));
+			meta.append(link);
+		}
+		card.append(meta);
+	}
 
 	const form = el("div", "fields");
 	const inputs = new Map();
@@ -567,7 +624,7 @@ function providerCard(p, modelCount) {
 			if (v && !(field && !field.secret && v === field.preview && field.source === "saved")) values[env] = v;
 		}
 		if (Object.keys(values).length === 0) return toast("Enter a value to save.", "warning");
-		await saveCredentials(p, values);
+		await saveCredentials(p, values, scope);
 	});
 	actions.append(save);
 	if (saved) {
@@ -575,7 +632,7 @@ function providerCard(p, modelCount) {
 			button("Remove saved", "btn small", async () => {
 				const values = {};
 				for (const f of p.fields) if (f.source === "saved") values[f.env] = null;
-				await saveCredentials(p, values);
+				await saveCredentials(p, values, scope);
 			}),
 		);
 	}
@@ -583,12 +640,12 @@ function providerCard(p, modelCount) {
 	return card;
 }
 
-async function saveCredentials(p, values) {
+async function saveCredentials(p, values, scope = "providers") {
 	if (busy) return toast("Wait for the agent to finish, then save.", "warning");
 	const res = await fetch("/api/credentials", {
 		method: "POST",
 		headers: { "content-type": "application/json", "x-forge-token": token },
-		body: JSON.stringify({ provider: p.id, values, sessionPath: currentSession }),
+		body: JSON.stringify({ scope, id: p.id, values, sessionPath: currentSession }),
 	});
 	if (!res.ok) return toast(`Could not save: ${await res.text()}`, "error");
 	toast(`${p.label} saved. Restarting the agent…`);
@@ -636,6 +693,8 @@ async function renderPage(which) {
 			["Built-in tools", config.tools.builtin, "terminal"],
 			["Planning", config.tools.plan ? ["update_plan"] : [], "planning"],
 		];
+		const commands = await call({ type: "get_commands" });
+		const skills = (commands.success ? (commands.data.commands ?? []) : []).filter((c) => c.source === "skill");
 		for (const [title, names, iconName] of groups) {
 			if (!names.length) continue;
 			const card = el("div", "card");
@@ -644,6 +703,28 @@ async function renderPage(which) {
 			const meta = el("div", "meta");
 			for (const n of names) meta.append(el("span", "chip", n));
 			card.append(head, meta);
+			grid.append(card);
+		}
+		if (skills.length > 0) {
+			const card = el("div", "card wide");
+			const head = el("div", "card-head");
+			head.append(iconSpan("c-icon", "knowledge-base"), el("b", "", "Skills"), el("span", "badge", String(skills.length)));
+			card.append(head, el("p", "", "Know-how the agent loads when a task needs it. Click one to use it now."));
+			const list = el("div", "skill-list");
+			for (const sk of skills) {
+				const name = sk.name.replace(/^skill:/, "");
+				const row = el("button", "skill-row");
+				row.type = "button";
+				row.append(el("b", "", name), el("span", "", sk.description ?? ""));
+				row.onclick = () => {
+					setMode("chat");
+					$("#input").value = `/${sk.name} `;
+					autosize();
+					$("#input").focus();
+				};
+				list.append(row);
+			}
+			card.append(list);
 			grid.append(card);
 		}
 		page.append(grid);
@@ -664,6 +745,8 @@ async function renderPage(which) {
 		const meta = el("div", "meta");
 		meta.append(el("span", "chip", h.model.replace(/^global\.anthropic\./, "")));
 		meta.append(el("span", "chip", `${h.tools} tool${h.tools === 1 ? "" : "s"}`));
+		if (h.skills) meta.append(el("span", "chip", `${h.skills} skill${h.skills === 1 ? "" : "s"}`));
+		if (h.keys?.length) meta.append(el("span", "chip", `keys: ${h.keys.join(", ")}`));
 		for (const v of h.views) meta.append(el("span", "chip", v));
 		const bin = h.name === "forge" ? "forge/bin/forge.ts" : `${h.path}/bin/${h.name}.ts`;
 		const actions = el("div", "card-actions");
@@ -700,10 +783,31 @@ function ago(ms) {
 	return new Date(ms).toLocaleDateString();
 }
 
+let sessionsLoaded = false;
+
 async function loadSessions() {
-	const res = await fetch("/api/sessions", { headers: { "x-forge-token": token } });
+	const res = await fetch(`/api/sessions${AGENT_QUERY}`, { headers: { "x-forge-token": token } });
 	if (res.ok) sessions = await res.json();
+	sessionsLoaded = true;
 	renderSessions();
+}
+
+/** Grey placeholder rows while something loads. */
+function skeletonRows(count, cls) {
+	return Array.from({ length: count }, (_, i) => {
+		const row = el("div", `skeleton ${cls}`);
+		row.style.setProperty("--w", `${[78, 62, 86, 54, 70, 66][i % 6]}%`);
+		return row;
+	});
+}
+
+/** The chat area while a chat loads (page load, reconnect, switching chats). Replaced by the transcript. */
+function showChatSkeleton() {
+	const box = el("div", "chat-skeleton");
+	box.setAttribute("aria-label", "Loading chat");
+	const user = el("div", "skeleton sk-bubble");
+	box.append(user, ...skeletonRows(4, "sk-line"));
+	chat.replaceChildren(box);
 }
 
 function renderSessions() {
@@ -711,6 +815,10 @@ function renderSessions() {
 	const list = $("#sessions");
 	const shown = sessions.filter((s) => !query || s.title.toLowerCase().includes(query));
 	list.replaceChildren();
+	if (!sessionsLoaded) {
+		list.append(...skeletonRows(5, "sk-session"));
+		return;
+	}
 	if (shown.length === 0) list.append(el("div", "empty-note", query ? "No matching chats" : "No saved chats yet"));
 	for (const s of shown) {
 		const b = el("button", `session${s.path === currentSession ? " current" : ""}`);
@@ -727,6 +835,7 @@ async function openSession(path) {
 	app.classList.remove("sidebar-open");
 	setMode("chat");
 	if (path === currentSession) return;
+	showChatSkeleton();
 	const res = await call({ type: "switch_session", sessionPath: path });
 	if (!res.success) toast(`Could not open chat: ${res.error}`, "error");
 	else if (res.data?.cancelled) toast("Switching chats was cancelled by the harness.", "warning");
@@ -747,6 +856,7 @@ $("#new").onclick = async () => {
 
 let busy = false;
 let noProvider = false; // no model provider is set up yet (no key, no AWS credentials)
+let missingKeys = []; // this harness's services with required keys not set
 let replaying = true;
 let follow = true;
 let turn = null; // the current turn
@@ -796,10 +906,22 @@ function showWelcome() {
 	if (config.brand?.mark) mark.append(brandShape("mark", "", 64));
 	else mark.append(aiState("idle", 56));
 	box.append(mark);
-	if (config.web?.eyebrow) box.append(el("div", "eyebrow", config.web.eyebrow));
-	box.append(el("h1", "", config.web?.headline ?? config.title));
-	const sub = config.web?.subtitle ?? config.description;
-	if (sub) box.append(el("p", "sub", sub));
+	if (BUILD) {
+		box.append(el("div", "eyebrow", config.builder.title));
+		box.append(el("h1", "", `What should ${config.title} do next?`));
+		box.append(
+			el(
+				"p",
+				"sub",
+				`Describe what you need. pi-Forge builds it into ${config.title} (a tool, a view, a data source or a skill), tests it, and reloads ${config.title} with it.`,
+			),
+		);
+	} else {
+		if (config.web?.eyebrow) box.append(el("div", "eyebrow", config.web.eyebrow));
+		box.append(el("h1", "", config.web?.headline ?? config.title));
+		const sub = config.web?.subtitle ?? config.description;
+		if (sub) box.append(el("p", "sub", sub));
+	}
 
 	const actions = el("div", "actions");
 	if (noProvider) {
@@ -807,7 +929,29 @@ function showWelcome() {
 		setup.classList.add("setup");
 		actions.append(setup);
 	}
-	if (config.isForge) {
+	if (missingKeys.length > 0 && !BUILD) {
+		const names = missingKeys.map((g) => g.label);
+		const tools = [...new Set(missingKeys.flatMap((g) => g.tools ?? []))];
+		const keys = actionCard(
+			"api-key",
+			names.length === 1 ? `Add your ${names[0]} key` : `Add keys for ${names.slice(0, -1).join(", ")} and ${names.at(-1)}`,
+			tools.length ? `Needed by ${tools.slice(0, 4).join(", ")}${tools.length > 4 ? "…" : ""}` : "Some tools need it to work",
+			() => {
+				pendingSettingsFocus = "keys";
+				setMode("settings");
+			},
+		);
+		keys.classList.add("setup");
+		actions.append(keys);
+	}
+	if (BUILD) {
+		actions.append(
+			actionCard("tool", "Add a tool", "A new capability: an API lookup, a calculator, an exporter…", () => useSuggestion(`Add a tool to ${config.title} that `)),
+			actionCard("views", "Add a view", "A new way to see results: a chart, a map, a 3D preview…", () => useSuggestion(`Add a view to ${config.title} that shows `)),
+			actionCard("api-key", "Connect a service", "Data from an API or account, with its key in Settings", () => useSuggestion(`Connect ${config.title} to `)),
+			actionCard("skill", "Teach it a workflow", "A checklist, standard or procedure it should follow", () => useSuggestion(`Teach ${config.title} how to `)),
+		);
+	} else if (config.isForge) {
 		actions.append(
 			actionCard("layers", "Browse harnesses", "Open your existing harnesses", () => setMode("harnesses")),
 			actionCard("views", "Explore views", "See available workspace views", () => setMode("views")),
@@ -822,7 +966,7 @@ function showWelcome() {
 		actions.append(actionCard("views", "Explore views", `How ${config.title} shows results`, () => setMode("views")));
 	}
 	box.append(actions);
-	if (config.web?.tagline) box.append(el("div", "tagline", config.web.tagline));
+	if (config.web?.tagline && !BUILD) box.append(el("div", "tagline", config.web.tagline));
 	chat.append(box);
 	updateSide();
 }
@@ -1100,6 +1244,12 @@ async function reloadChat() {
 		call({ type: "get_available_models" }),
 	]);
 	if (models.success) noProvider = (models.data.models ?? []).length === 0;
+	try {
+		const res = await fetch("/api/credentials", { headers: { "x-forge-token": token } });
+		missingKeys = res.ok ? ((await res.json()).harness ?? []).filter((g) => !g.configured && g.fields.some((f) => !f.optional)) : [];
+	} catch {
+		missingKeys = [];
+	}
 	if (state.success) applyState(state.data);
 	const first = history.success ? renderMessages(history.data.messages ?? []) : "";
 	chatTitle = state.data?.sessionName || (first ? first.slice(0, 80) : "New chat");
@@ -1112,10 +1262,18 @@ async function reloadChat() {
 }
 
 function applyState(data) {
+	const wasBusy = busy;
 	const m = data?.model;
-	$("#model-name").textContent = noProvider ? "Set up a model" : m ?(m.name ?? m.id).replace(/\s*\((Global|US|EU)\)\s*$/, "") : "No model";
+	$("#model-name").textContent = noProvider ? "Set up a model" : m ? (m.name ?? m.id).replace(/\s*\((Global|US|EU)\)\s*$/, "") : "No model";
 	$("#model-level").textContent = data?.thinkingLevel ?? "off";
 	currentSession = data?.sessionFile ?? "";
+	if (data?.isStreaming && !wasBusy) {
+		if (agentLabel === "Idle") {
+			agentState = "thinking";
+			agentLabel = "Working";
+		}
+		setAgentState(agentState, agentLabel);
+	}
 	setBusy(!!data?.isStreaming);
 }
 
@@ -1157,17 +1315,192 @@ function settleAgentState() {
 	}, 2500);
 }
 
-// Working line while the agent works and nothing else shows it yet (no steps, no streaming text).
+// Status line: at the bottom of the chat the whole time the agent works. It says what is happening now
+// (thinking, writing a file, running a tool, writing the reply), for how long, and a live line of the reasoning.
+let runStartedAt = 0;
+let phaseStartedAt = 0;
+let workingDetail = "";
+let thinkingTail = "";
+let statusTicker = null;
+let queued = []; // messages sent while the agent works, not yet read by it
+
+function fmtElapsed(ms) {
+	const s = Math.max(0, Math.floor(ms / 1000));
+	return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
+}
+
 function updateWorking() {
-	const existing = chat.querySelector(".working");
-	const show = busy && !turn?.current?.text;
-	if (show && !existing) {
+	let line = chat.querySelector(".working");
+	if (!busy) {
+		line?.remove();
+		chat.querySelector(".queued-list")?.remove();
+		clearInterval(statusTicker);
+		statusTicker = null;
+		return;
+	}
+	if (!line) {
 		removeWelcome();
-		const line = el("div", "working");
-		line.append(aiState(agentState, 20), el("span", "working-label", agentLabel));
+		line = el("div", "working");
+		const main = el("div", "working-main");
+		const top = el("div", "working-top");
+		top.append(el("span", "working-label"), el("span", "working-time"));
+		main.append(top, el("div", "working-detail"));
+		line.append(aiState(agentState, 20), main);
+	}
+	if (!runStartedAt) runStartedAt = phaseStartedAt = Date.now();
+	statusTicker ??= setInterval(updateWorking, 1000);
+	line.querySelector("ai-state").state = agentState;
+	line.querySelector(".working-label").textContent = agentLabel;
+	const total = Date.now() - runStartedAt;
+	const phase = Date.now() - phaseStartedAt;
+	line.querySelector(".working-time").textContent = ` · ${fmtElapsed(phase)}${total - phase > 2000 ? `  (${fmtElapsed(total)} in total)` : ""}`;
+	const detail = line.querySelector(".working-detail");
+	detail.textContent = workingDetail;
+	detail.hidden = !workingDetail;
+	renderQueued();
+	// Queued messages, then the status line, stay last: below anything the run adds.
+	const queue = chat.querySelector(".queued-list");
+	if (queue && queue.nextElementSibling !== line) chat.append(queue);
+	if (chat.lastElementChild !== line) {
 		chat.append(line);
 		keepAtBottom();
-	} else if (!show && existing) existing.remove();
+	}
+}
+
+/** Messages sent mid-run wait until the agent's current step ends; show them so they don't look lost. */
+function renderQueued() {
+	let box = chat.querySelector(".queued-list");
+	if (queued.length === 0) {
+		box?.remove();
+		return;
+	}
+	if (!box) {
+		box = el("div", "queued-list");
+		chat.append(box);
+	}
+	const key = JSON.stringify(queued);
+	if (box.dataset.key === key) return;
+	box.dataset.key = key;
+	box.replaceChildren(
+		...queued.map((text) => {
+			const row = el("div", "msg user queued");
+			const inner = el("div", "queued-inner");
+			inner.append(el("div", "bubble", text), el("div", "queued-note", "Queued · the agent reads it after its current step"));
+			row.append(inner);
+			return row;
+		}),
+	);
+}
+
+/** A builder run changed the harness: reload what the page knows (tools, views), and tell the user. */
+async function harnessUpdated(event) {
+	if (!event.ok) {
+		toast(`${config.title} changed, but its spec has errors, so it wasn't reloaded: ${event.error ?? ""}`, "error");
+		return;
+	}
+	try {
+		Object.assign(config, await (await fetch("/api/config")).json());
+		panelViews.clear();
+		if (!BUILD) for (const v of config.views.filter((x) => x.panel)) panelViews.set(v.id, v);
+	} catch {
+		// the old config keeps working until the next page load
+	}
+	const what = `${event.tools?.length ?? 0} tools, ${event.views?.length ?? 0} views`;
+	if (BUILD) {
+		const t = ensureTurn();
+		const note = el("div", "update-note");
+		note.append(
+			el("span", "", `Applied to ${config.title}: its agent reloaded with ${what}.`),
+			button(`Open ${config.title}`, "btn small primary", () => {
+				location.href = "/";
+			}),
+		);
+		t.answer.append(note);
+		keepAtBottom();
+	} else toast(`${config.title} was updated (${what}). The new tools are ready.`);
+}
+
+/** Replay after a page load or reconnect: rebuild what the agent is doing, and since when, from the event log. */
+function replayStatus(event) {
+	const ts = typeof event._ts === "number" ? event._ts : Date.now();
+	const phase = (state, label, detail = "") => {
+		agentState = state;
+		agentLabel = label;
+		phaseStartedAt = ts;
+		workingDetail = detail;
+	};
+	switch (event.type) {
+		case "agent_start":
+			if (!runStartedAt) runStartedAt = ts;
+			phase("thinking", "Thinking");
+			break;
+		case "agent_settled":
+			runStartedAt = 0;
+			queued = [];
+			runningTools.clear();
+			phase("idle", "Idle");
+			break;
+		case "message_update": {
+			const e = event.assistantMessageEvent;
+			if (e?.type === "thinking_start") phase("thinking", "Thinking");
+			else if (e?.type === "text_start") phase("generating", "Writing the reply");
+			else if (e?.type === "toolcall_start" && e.tool) phase("working", toolPrepLabel(e.tool));
+			else if (e?.type === "toolcall_delta" && e.tool && agentState === "working") {
+				// The server's snapshot of the call being written: sharpen the label, keep the step's start time.
+				agentLabel = toolPrepLabel(e.tool);
+				workingDetail = e.tool.chars > 2000 ? `${(e.tool.chars / 1000).toFixed(1)}k characters so far` : "";
+			}
+			break;
+		}
+		case "tool_execution_start": {
+			runningTools.set(event.toolCallId, event.toolName);
+			const a = event.args ?? {};
+			const target = [a.path, a.file_path, a.command, a.url, a.query].find((v) => typeof v === "string") ?? "";
+			phase(
+				toolState(event.toolName),
+				event.toolName === "update_plan" ? "Updating the plan" : `Running ${event.toolName}`,
+				target.replace(/\s+/g, " ").slice(0, 140),
+			);
+			break;
+		}
+		case "tool_execution_end":
+			runningTools.delete(event.toolCallId);
+			phase("thinking", "Thinking");
+			break;
+		case "queue_update":
+			queued = [...(event.steering ?? []), ...(event.followUp ?? [])];
+			break;
+		case "auto_retry_start":
+			phase("thinking", "Retrying after a provider error");
+			break;
+	}
+}
+
+/** A new phase of the run: label, state icon, and the phase timer restarts. */
+function setPhase(state, label, detail = "") {
+	if (agentLabel !== label) phaseStartedAt = Date.now();
+	workingDetail = detail;
+	setAgentState(state, label);
+	updateWorking();
+}
+
+/** The last part of the reasoning, on one line, for the status line. */
+function thinkingPreview(text) {
+	const flat = text.replace(/\s+/g, " ").trim();
+	if (!flat) return "";
+	const tail = flat.slice(-160);
+	const cut = tail.search(/[.!?:]\s+\S[^.!?:]*$/);
+	return `…${(cut >= 0 ? tail.slice(cut + 1) : tail).trim()}`;
+}
+
+/** What a tool call is about to do, while the model is still writing its arguments. */
+function toolPrepLabel(tool) {
+	const file = (tool.target ?? "").split(/[\\/]/).pop();
+	if (tool.name === "write") return file ? `Writing ${file}` : "Writing a file";
+	if (tool.name === "edit") return file ? `Editing ${file}` : "Editing a file";
+	if (tool.name === "read") return file ? `Reading ${file}` : "Reading a file";
+	if (tool.name === "bash" || tool.name === "powershell") return "Preparing a command";
+	return `Preparing ${tool.name || "a tool call"}`;
 }
 
 function setBusy(value) {
@@ -1194,10 +1527,14 @@ function onEvent(event) {
 		case "agent_start":
 			// pi echoes the user message after agent_start; that message opens the turn.
 			if (!turn || !turn.running) needNewTurn = true;
-			setAgentState("thinking", "Thinking");
+			if (!busy) runStartedAt = phaseStartedAt = Date.now();
 			setBusy(true);
+			setPhase("thinking", "Thinking");
 			break;
 		case "agent_settled":
+			runStartedAt = 0;
+			workingDetail = "";
+			queued = [];
 			runningTools.clear();
 			closeTurn(turn, Date.now());
 			setBusy(false);
@@ -1216,8 +1553,29 @@ function onEvent(event) {
 			break;
 		case "message_update": {
 			const e = event.assistantMessageEvent;
+			if (e?.type === "thinking_start") {
+				thinkingTail = "";
+				setPhase("thinking", "Thinking");
+			} else if (e?.type === "thinking_delta") {
+				thinkingTail = (thinkingTail + (e.delta ?? "")).slice(-600);
+				if (agentState !== "thinking") setPhase("thinking", "Thinking");
+				workingDetail = thinkingPreview(thinkingTail);
+				updateWorking();
+			} else if (e?.tool && (e.type === "toolcall_start" || e.type === "toolcall_delta")) {
+				const label = toolPrepLabel(e.tool);
+				const size = e.tool.chars > 2000 ? `${(e.tool.chars / 1000).toFixed(1)}k characters so far` : "";
+				const command = e.tool.name === "bash" || e.tool.name === "powershell" ? (e.tool.target ?? "") : "";
+				const detail = [command.replace(/\s+/g, " ").slice(0, 140), size].filter(Boolean).join(" · ");
+				// One tool call is one step: the label sharpens as its target streams in, the step timer keeps running.
+				if (e.type === "toolcall_start" || agentState !== "working") setPhase("working", label, detail);
+				else {
+					workingDetail = detail;
+					setAgentState("working", label);
+					updateWorking();
+				}
+			}
 			if (e?.type === "text_delta") {
-				if (agentState !== "generating") setAgentState("generating", "Writing");
+				if (agentState !== "generating") setPhase("generating", "Writing the reply");
 				const t = ensureTurn();
 				if (!t.current) {
 					t.current = { el: el("div", "text"), text: "" };
@@ -1248,7 +1606,15 @@ function onEvent(event) {
 			break;
 		case "tool_execution_start":
 			runningTools.set(event.toolCallId, event.toolName);
-			setAgentState(toolState(event.toolName), event.toolName === "update_plan" ? "Planning" : `Using ${event.toolName}`);
+			{
+				const a = event.args ?? {};
+				const target = [a.path, a.file_path, a.command, a.url, a.query].find((v) => typeof v === "string") ?? "";
+				setPhase(
+					toolState(event.toolName),
+					event.toolName === "update_plan" ? "Updating the plan" : `Running ${event.toolName}`,
+					target.replace(/\s+/g, " ").slice(0, 140),
+				);
+			}
 			if (!event.parentToolCallId) addStep(event.toolCallId, event.toolName, event.args);
 			updateWorking();
 			break;
@@ -1258,11 +1624,16 @@ function onEvent(event) {
 			if (busy) {
 				// Tools can run in parallel: keep showing one that is still running.
 				const still = [...runningTools.values()].at(-1);
-				if (still) setAgentState(toolState(still), `Using ${still}`);
-				else setAgentState("thinking", "Thinking");
+				if (still) setPhase(toolState(still), `Running ${still}`);
+				else setPhase("thinking", "Thinking");
 			}
 			break;
+		case "queue_update":
+			queued = [...(event.steering ?? []), ...(event.followUp ?? [])];
+			updateWorking();
+			break;
 		case "auto_retry_start":
+			if (busy) setPhase("thinking", "Retrying after a provider error", event.errorMessage ? String(event.errorMessage).slice(0, 140) : "");
 			setStatus("retry", "retrying…");
 			break;
 		case "auto_retry_end":
@@ -1419,6 +1790,7 @@ function showQuestionnaire(req) {
 
 		const body = el("div", "q-body");
 		body.append(el("h2", "q-prompt", q.prompt));
+		if (q.optional && options.length > 0) body.append(el("div", "q-hint", "Optional"));
 		if (options.length > 0) {
 			if (multi && options.length >= 4) {
 				const bar = el("div", "q-bar");
@@ -1436,13 +1808,20 @@ function showQuestionnaire(req) {
 			} else if (multi) body.append(el("div", "q-hint", "Choose any that apply"));
 			const list = el("div", "q-options");
 			for (const o of options) list.append(optionRow(q, st, o, multi));
-			if (q.allow_other !== false) {
+			{
+				// Every question with options also takes a typed answer.
 				const row = el("div", "q-opt q-other");
 				const box = el("span", `q-box ${multi ? "check" : "radio"}${st.other.trim() ? " filled" : ""}`);
 				box.innerHTML = multi ? icon("check") : "";
 				const input = el("input", "q-other-input");
-				input.placeholder = q.placeholder || "Other: type your own";
+				input.placeholder = q.placeholder ? `Other: ${q.placeholder}` : "Other: type your own answer";
 				input.value = st.other;
+				input.onkeydown = (e) => {
+					if (e.key === "Enter" && !e.isComposing) {
+						e.preventDefault();
+						last ? submit() : go(index + 1);
+					}
+				};
 				input.oninput = () => {
 					st.other = input.value;
 					if (!multi && input.value.trim()) {
@@ -1458,8 +1837,8 @@ function showQuestionnaire(req) {
 			body.append(list);
 		} else {
 			const area = el("textarea", "q-textarea");
-			area.rows = 3;
 			area.placeholder = q.placeholder || "Type your answer";
+			area.rows = q.optional ? 4 : 3;
 			area.value = st.text;
 			area.oninput = () => {
 				st.text = area.value;
@@ -1471,7 +1850,7 @@ function showQuestionnaire(req) {
 					last ? submit() : go(index + 1);
 				}
 			};
-			body.append(area);
+			body.append(area, el("div", "q-hint", `${q.optional ? "Optional. " : ""}Enter to ${last ? "submit" : "continue"} · Shift+Enter for a new line`));
 			setTimeout(() => area.focus(), 0);
 		}
 
@@ -1535,6 +1914,10 @@ function showNextDialog() {
 	form.append(row);
 	$("#dialog").showModal();
 }
+
+// Every dialog answers through its own buttons. Without this, Enter in a lone text box submits the
+// method="dialog" form natively, which closes the dialog without sending the answer.
+$("#dialog-form").addEventListener("submit", (e) => e.preventDefault());
 
 $("#dialog").addEventListener("cancel", (e) => {
 	e.preventDefault();
@@ -1802,6 +2185,10 @@ function send(text) {
 	if (!message) return;
 	follow = true;
 	if (mode !== "chat") setMode("chat");
+	if (busy) {
+		queued = [...queued, message];
+		updateWorking();
+	}
 	rpc(busy ? { type: "prompt", message, streamingBehavior: "steer" } : { type: "prompt", message });
 }
 
@@ -1848,6 +2235,9 @@ function handle(event) {
 			replaying = false;
 			reloadChat().then(() => showNextDialog());
 			return;
+		case "forge_harness_updated":
+			if (!replaying) harnessUpdated(event);
+			return;
 		case "forge_agent_restarted":
 			setTimeout(async () => {
 				await reloadChat();
@@ -1869,11 +2259,12 @@ function handle(event) {
 			if (!event.success && !replaying && event.command !== "abort") toast(`${event.command}: ${event.error}`, "error");
 			return;
 	}
-	// Chat events from the replay are skipped: the transcript comes from get_messages instead.
-	if (!replaying) onEvent(event);
+	// Chat events from the replay are not drawn (the transcript comes from get_messages), but they rebuild the status.
+	if (replaying) replayStatus(event);
+	else onEvent(event);
 }
 
-const events = new EventSource(`/api/events?token=${token}`);
+const events = new EventSource(`/api/events?token=${token}${BUILD ? "&agent=builder" : ""}`);
 events.onmessage = (msg) => {
 	try {
 		handle(JSON.parse(msg.data));
@@ -1885,6 +2276,10 @@ events.onerror = () => setStatus("conn", "reconnecting…");
 events.onopen = () => {
 	setStatus("conn");
 	replaying = true;
+	runStartedAt = 0;
+	queued = [];
+	runningTools.clear();
+	if (!chat.querySelector(".turn, .msg")) showChatSkeleton();
 	pendingDialogs.clear();
 	if (openDialogId) {
 		openDialogId = null;
@@ -1892,5 +2287,6 @@ events.onopen = () => {
 	}
 };
 
+renderSessions();
 setMode(location.pathname === "/preview" ? "views" : "chat");
 updateSend();

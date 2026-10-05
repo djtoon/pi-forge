@@ -13,6 +13,8 @@ Goal: a working harness in `harnesses/<name>/` that fits the user's actual work,
 
 ## 1. Interview with `forge_ask`
 Ask in rounds of 2-5 questions. Options first, recommended option first, free text only for names/descriptions/URLs.
+Every question with options also takes a typed answer, and `forge_ask` adds an open "anything else?" question at the end
+of each round by itself: don't add your own, but read that answer and act on it. A "(skipped…)" answer means: use your recommended default.
 If `forge_ask` fails (headless mode), ask the same questions in your reply and stop until the user answers.
 
 **Round 1: the work**
@@ -34,12 +36,22 @@ Aim for roughly 6-15 tools. Then ask:
 - the proposed toolkit (multi, all pre-described as `name — what it does`, recommended ones first): the user unticks what they don't want, and "Other" adds tools
 - data sources and APIs the tools should use (multi: real, public or common ones for the domain; "Other" for internal APIs)
 - built-in tools (single: "full: read, write, edit, bash, grep, find, ls" recommended / "read-only: read, grep, find, ls" / "none")
-- For each external API: auth? (none / env var name / OAuth). Never ask for secret values; only the env var name.
+- Keys and settings: for each API or account the tools use, decide yourself what it needs (an API key, an account or
+  property ID, a region, a path to a program) and confirm the list with the user (multi, pre-ticked). These become
+  `credentials:` in the spec, so the user enters them in the harness's Settings page (or `/keys` in the terminal).
+  **Never ask for the values themselves**, in a question or in chat.
 - Programs the tools could use if installed (e.g. a slicer, ffmpeg, a CAD kernel): check with `bash` whether they exist and say what each unlocks.
+  A path the user may need to point at (e.g. `BLENDER_PATH`) is an optional, non-secret credentials field.
+
+**Round 2b: know-how** (skills)
+Tools are what the agent can *do*; skills are what it *knows how to do well*. Propose 2-5 skills for the domain's
+recurring, multi-step jobs: a workflow ("plan a print job"), a checklist or standard ("pre-flight checks before
+publishing"), reference knowledge (formulas, rules of thumb, house style), or a quality bar with examples.
+Ask (multi, pre-described as `name — when the agent uses it`) which to include; "Other" adds the user's own procedures.
 
 **Round 3: risk**
 - guards (multi): protect secrets (.env, *.key, *.pem) [recommended], confirm destructive shell commands [recommended], read-only mode, block network writes
-- anything the agent must never do (free text, optional)
+- (what the agent must never do comes from the open "anything else?" answer; put it in `prompt.system` and guards)
 
 **Round 4: what the user needs to SEE** (the important one)
 - Show the available views from `forge_list views` whose domains match, plus `data-table`/`chart`/`markdown-doc` as general options. Ask (multi) which results they want to see and how.
@@ -57,6 +69,24 @@ Aim for roughly 6-15 tools. Then ask:
 2. Edit `harnesses/<name>/harness.yaml`:
    - `tools.custom`: the tool names you will write (snake_case verbs: `search_papers`, `get_render_status`).
    - `ui.views`: each `{ id, shows: [tool names], panel? }`.
+   - `credentials`: one entry per service the tools need, so it shows up in the harness's Settings:
+     ```yaml
+     credentials:
+       - id: openweather
+         label: OpenWeather
+         note: Free tier is enough. Used for live forecasts.
+         url: https://home.openweathermap.org/api_keys
+         tools: [get_forecast]
+         fields:
+           - { env: OPENWEATHER_API_KEY, label: API key, placeholder: "32 characters" }
+       - id: blender
+         label: Blender
+         note: Only needed for photo-real renders.
+         fields:
+           - { env: BLENDER_PATH, label: Path to blender.exe, secret: false, optional: true }
+     ```
+     Name variables after the service (`SHOPIFY_ACCESS_TOKEN`, not `TOKEN`). IDs, regions and paths get `secret: false`.
+     Model-provider keys (Anthropic, OpenAI, AWS) are set once for every harness: never list them here.
    - `prompt.system`: 5-10 lines: role, which tool to use when, domain rules (units, sources, safety), what never to do. Don't describe the views; forge adds that.
    - `ui.header.hint`: one example request that exercises the main tool (it also becomes the "Try an example" card).
    - `ui.web`: the browser welcome screen. Write all three:
@@ -78,10 +108,18 @@ Show the user the mark (the Views page and the welcome screen display it) and of
 ## 3. Write the custom tools
 Build every tool in the confirmed toolkit, not a subset; each must really work (no stubs or fake data).
 Use the `tool-builder` skill for each tool in `tools.custom`. Write them in `harnesses/<name>/custom/extensions/<topic>-tools.ts`. Every tool returns `viewResult(text, viewId, data)` where the data matches the view's `types.ts`.
+Tools read keys with `requireKey("ENV_NAME")` from `forge_modules/keys.ts` (generated from `credentials:`), so a missing key
+tells the user exactly where to add it.
+
+## 3b. Write the skills
+Use the `skill-builder` skill for each confirmed skill: `harnesses/<name>/custom/skills/<skill-name>/SKILL.md`, plus any
+`references/` files it needs. Write real domain substance (steps, numbers, criteria, the tools to call at each step),
+not generic advice. The harness's agent sees each skill's description and loads it when a task matches.
 
 ## 4. Generate and test
 1. `forge_generate` (dry run), then `forge_generate` with `apply: true`.
 2. `forge_smoke` with the harness name (load check). Fix any extension error it reports (file + line are in the output).
+   Its `skills` row must list every skill you wrote; its `keys` row shows which keys the user still has to add.
 3. `forge_smoke` with a realistic `prompt` that should call the main tools; check the tools ran and returned the expected views.
 4. If a custom view was needed: `view-builder` skill, then regenerate.
 
@@ -90,4 +128,6 @@ Tell the user, briefly:
 - `node harnesses/<name>/bin/<name>.ts`: terminal UI
 - `node harnesses/<name>/bin/<name>.ts web`: browser UI with the views (and `/preview` for all views)
 - `node harnesses/<name>/bin/<name>.ts -p "..."` / `--mode json` / `--mode rpc`: headless
-- To change it later: ask forge ("update <name>: ..."), which uses the `harness-update` skill.
+- Keys: which ones to add, and where: **Settings → <Title> keys** in the browser, `/keys` in the terminal, or the environment variables (for headless use)
+- Skills: the ones it has, and that `/skill:<name>` runs one directly
+- To grow it later: the **Add to <Title>** page in its browser sidebar (a pi-Forge chat just for that harness, which reloads it when done), or ask pi-Forge here ("update <name>: ...").

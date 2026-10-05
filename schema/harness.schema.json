@@ -107,6 +107,81 @@
 			},
 			"additionalProperties": false
 		},
+		"credentials": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"required": [
+					"id",
+					"label",
+					"fields"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"pattern": "^[a-z][a-z0-9-]{0,39}$",
+						"description": "Service id, e.g. openweather"
+					},
+					"label": {
+						"type": "string",
+						"description": "Service name shown in Settings, e.g. OpenWeather"
+					},
+					"note": {
+						"type": "string",
+						"description": "One line for the user: what it unlocks, free tier, scopes to grant"
+					},
+					"url": {
+						"type": "string",
+						"pattern": "^https://",
+						"description": "Where to get the key"
+					},
+					"tools": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "Custom tools that need it"
+					},
+					"fields": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"required": [
+								"env",
+								"label"
+							],
+							"properties": {
+								"env": {
+									"type": "string",
+									"pattern": "^[A-Z][A-Z0-9_]{1,63}$",
+									"description": "Environment variable the tools read, e.g. OPENWEATHER_API_KEY"
+								},
+								"label": {
+									"type": "string",
+									"description": "Field label in Settings, e.g. API key"
+								},
+								"secret": {
+									"type": "boolean",
+									"description": "Masked in Settings (default true). Set false for IDs, regions, paths."
+								},
+								"optional": {
+									"type": "boolean",
+									"description": "The tools work without it (default false)"
+								},
+								"placeholder": {
+									"type": "string",
+									"description": "Example shown in the empty field, e.g. sk-… or us-east-1"
+								}
+							},
+							"additionalProperties": false
+						},
+						"minItems": 1
+					}
+				},
+				"additionalProperties": false
+			},
+			"description": "Keys and settings the custom tools need (API keys, account IDs, paths). Each service gets a card in the harness's Settings; saved values reach the tools as environment variables."
+		},
 		"prompt": {
 			"type": "object",
 			"properties": {

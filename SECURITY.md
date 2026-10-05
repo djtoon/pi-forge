@@ -28,6 +28,8 @@ Don't expose the port to other machines (for example with a tunnel or a reverse 
 - The browser only ever receives masked previews (for example `sk-a…9f2c`), never the full key.
 - pi's own `/login` credentials stay in `~/.forge/<name>/auth.json`.
 
+- Keys a harness's tools need (`credentials:` in its spec) are saved per harness in `~/.forge/<name>/credentials.json` (owner-only). They're given only to that harness's process, are masked in the browser the same way, and the agent is told never to ask for them in the chat.
+
 Never commit `~/.forge`, `.env` files, or keys inside `harness.yaml` or `custom/`.
 
 ## Reporting a vulnerability

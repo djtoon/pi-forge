@@ -14,6 +14,8 @@ export interface LoadCheck {
 	ok: boolean;
 	model?: string;
 	commands: number;
+	/** Skills pi loaded (from custom/skills) */
+	skills: string[];
 	stderr: string[];
 	error?: string;
 	ms: number;
@@ -65,7 +67,7 @@ export function loadCheck(harnessDir: string, timeoutMs = 45_000): Promise<LoadC
 		stderr += d.toString("utf8");
 	});
 	return new Promise((resolveCheck) => {
-		const result: LoadCheck = { ok: false, commands: 0, stderr: [], ms: 0 };
+		const result: LoadCheck = { ok: false, commands: 0, skills: [], stderr: [], ms: 0 };
 		const finish = (error?: string) => {
 			clearTimeout(timer);
 			child.kill();
@@ -80,13 +82,14 @@ export function loadCheck(harnessDir: string, timeoutMs = 45_000): Promise<LoadC
 		child.stdout.on(
 			"data",
 			lines((line) => {
-				const record = JSON.parse(line) as { type?: string; command?: string; success?: boolean; data?: { model?: { id?: string; name?: string }; commands?: unknown[] } };
+				const record = JSON.parse(line) as { type?: string; command?: string; success?: boolean; data?: { model?: { id?: string; name?: string }; commands?: { name?: string; source?: string }[] } };
 				if (record.type !== "response") return;
 				if (record.command === "get_state") {
 					result.model = record.data?.model?.id ?? "(none selected)";
 					child.stdin.write(`${JSON.stringify({ type: "get_commands" })}\n`);
 				} else if (record.command === "get_commands") {
 					result.commands = record.data?.commands?.length ?? 0;
+					result.skills = (record.data?.commands ?? []).filter((c) => c.source === "skill").map((c) => (c.name ?? "").replace(/^skill:/, ""));
 					finish();
 				}
 			}),
