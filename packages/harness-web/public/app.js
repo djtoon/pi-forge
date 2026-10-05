@@ -264,11 +264,14 @@ const PAGES = {
 	harnesses: { title: "Harnesses", nav: "#go-harnesses" },
 	views: { title: config.isForge ? "View catalog" : "Views", nav: "#go-views" },
 	tools: { title: "Tools", nav: "#go-tools" },
+	schedules: { title: "Schedules", nav: "#go-schedules" },
 	settings: { title: "Settings", nav: null },
 };
 $("#go-harnesses").hidden = !config.isForge;
 $("#go-tools").hidden = config.isForge;
 $("#go-build").hidden = !config.builder?.available;
+$("#go-schedules").hidden = config.isForge || BUILD;
+$("#go-schedules").onclick = () => setMode("schedules");
 $("#go-build-label").textContent = config.builder?.title ?? "Add to harness";
 $("#go-build").classList.toggle("active", BUILD);
 $("#go-back").hidden = !BUILD;
@@ -520,6 +523,15 @@ async function renderSettings(page) {
 	}
 	appearance.append(seg);
 
+	// Safety: sandbox mode
+	const safety = section(
+		"Safety",
+		`How much ${config.title}'s agent may touch on this computer. Applies to chats, scheduled runs and headless use. Saving restarts the agent.`,
+	);
+	const safetyBox = el("div", "safety-box");
+	safety.append(safetyBox);
+	renderSafety(safetyBox);
+
 	// This harness's keys (credentials: in its harness.yaml)
 	const harnessKeys = section(
 		`${config.title} keys`,
@@ -528,6 +540,20 @@ async function renderSettings(page) {
 	const harnessGrid = el("div", "provider-grid");
 	harnessKeys.append(harnessGrid);
 	harnessKeys.hidden = true;
+
+	// MCP servers (this harness's own mcp.json)
+	const mcp = section(
+		"MCP servers",
+		`Connect ${config.title} to MCP servers (GitHub, databases, Figma, Slack…): their tools become the agent's tools. Saved for this harness only (~/.forge/${config.name}/mcp.json). Saving restarts the agent; the open chat continues.`,
+	);
+	const mcpBox = el("div", "mcp-box");
+	mcp.append(mcpBox);
+	renderMcp(mcpBox);
+
+	// Usage (all chats of this harness on this computer)
+	const usage = section("Usage", "Tokens and estimated cost of this harness's chats on this computer, at each model's list price.");
+	const usageGrid = el("div", "usage-grid");
+	usage.append(usageGrid);
 
 	// Model providers
 	const providers = section(
@@ -544,7 +570,31 @@ async function renderSettings(page) {
 	kv.append(el("dt", "", "Harness"), el("dd", "", `${config.title} (${config.name})`));
 	about.append(kv);
 
-	page.append(appearance, harnessKeys, providers, about);
+	page.append(appearance, safety, harnessKeys, mcp, providers, usage, about);
+	fetch("/api/usage", { headers: { "x-forge-token": token } })
+		.then((r) => (r.ok ? r.json() : null))
+		.then((u) => {
+			if (!u) return;
+			for (const [label, b] of [
+				["Today", u.today],
+				["This month", u.month],
+				["All time", u.total],
+			]) {
+				const card = el("div", "usage-card");
+				card.append(el("span", "usage-label", label), el("b", "", fmtCost(b.cost)), el("span", "usage-sub", `${fmtTokens(b.tokens)} tokens · ${b.chats} chat${b.chats === 1 ? "" : "s"}`));
+				usageGrid.append(card);
+			}
+			if (u.byModel.length) {
+				const table = el("div", "usage-models");
+				for (const m of u.byModel) {
+					const row = el("div", "usage-row");
+					row.append(el("span", "", m.model), el("span", "", `${fmtTokens(m.tokens)} tokens`), el("b", "", fmtCost(m.cost)));
+					table.append(row);
+				}
+				usage.append(table);
+			}
+		})
+		.catch(() => {});
 
 	const [statusRes, models] = await Promise.all([
 		fetch("/api/credentials", { headers: { "x-forge-token": token } }),
@@ -561,6 +611,453 @@ async function renderSettings(page) {
 }
 
 let pendingSettingsFocus = "";
+
+// ---------------------------------------------------------------------------
+// Schedules page
+// ---------------------------------------------------------------------------
+
+const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+async function schedulesRequest(body) {
+	const res = await fetch("/api/schedules", {
+		method: body ? "POST" : "GET",
+		headers: { "content-type": "application/json", "x-forge-token": token },
+		body: body ? JSON.stringify(body) : undefined,
+	});
+	if (!res.ok) throw new Error(await res.text());
+	return res.json();
+}
+
+function fmtWhen(ms) {
+	if (!ms) return "";
+	const d = new Date(ms);
+	const today = new Date();
+	const sameDay = d.toDateString() === today.toDateString();
+	const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+	return sameDay ? `today ${time}` : `${d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} ${time}`;
+}
+
+let schedulesRender = 0;
+
+async function renderSchedules(page, editing) {
+	// Clicks and run events can both refresh the page; only the latest refresh draws.
+	const mine = ++schedulesRender;
+	let data;
+	try {
+		data = await schedulesRequest();
+	} catch (error) {
+		if (mine === schedulesRender) page.replaceChildren(pageHead("Schedules", ""), el("p", "note", `Could not read schedules: ${error.message}`));
+		return;
+	}
+	if (mine !== schedulesRender || mode !== "schedules") return;
+	page.replaceChildren(
+		pageHead("Schedules", `Prompts ${config.title} runs on its own while its web UI is running. Each run is saved as a chat.`),
+	);
+	const grid = el("div", "grid");
+	if (editing === "") grid.append(scheduleForm(page));
+	for (const sc of data.schedules) grid.append(editing === sc.id ? scheduleForm(page, sc) : scheduleCard(page, sc));
+	if (!data.schedules.length && editing !== "") {
+		const empty = el("div", "card wide");
+		empty.append(
+			el("b", "", "No schedules yet"),
+			el("p", "", `For example: "Every weekday at 08:00, summarize what changed since yesterday". ${config.title} runs it and saves the answer as a chat.`),
+		);
+		grid.append(empty);
+	}
+	const actions = el("div", "card-actions");
+	if (editing === undefined) actions.append(button("New schedule", "btn primary small", () => renderSchedules(page, "")));
+	page.append(actions, grid);
+	const help = el("p", "note schedule-help");
+	help.append(
+		"Runs happen only while this harness's web UI is running, and use its Safety setting (a command that needs your OK is skipped). To run one when the UI is closed, add this command to Task Scheduler or cron: ",
+		el("code", "", data.command),
+	);
+	page.append(help);
+}
+
+function scheduleCard(page, sc) {
+	const card = el("div", "card");
+	const head = el("div", "card-head");
+	head.append(iconSpan("c-icon", "timer"), el("b", "", sc.name), el("span", `badge${sc.running ? " warn" : sc.enabled ? " ok" : ""}`, sc.running ? "Running" : sc.enabled ? "On" : "Off"));
+	card.append(head, el("p", "schedule-prompt", sc.prompt));
+	const meta = el("div", "meta");
+	meta.append(el("span", "chip", sc.when));
+	if (sc.enabled && sc.next) meta.append(el("span", "chip", `next: ${fmtWhen(sc.next)}`));
+	if (sc.lastRun) meta.append(el("span", `chip${sc.lastRun.ok ? "" : " bad"}`, `last: ${fmtWhen(sc.lastRun.at)} · ${sc.lastRun.ok ? "done" : "failed"}${sc.lastRun.cost ? ` · ${fmtCost(sc.lastRun.cost)}` : ""}`));
+	card.append(meta);
+	if (sc.lastRun?.error) card.append(el("p", "note", sc.lastRun.error));
+	const actions = el("div", "card-actions");
+	if (sc.lastRun?.sessionPath) actions.append(button("Open last run", "btn small", () => openSession(sc.lastRun.sessionPath)));
+	actions.append(
+		button("Run now", "btn small", async () => {
+			try {
+				await schedulesRequest({ action: "run", id: sc.id });
+				renderSchedules(page);
+			} catch (error) {
+				toast(error.message, "warning");
+			}
+		}),
+		button("Edit", "btn small", () => renderSchedules(page, sc.id)),
+		button(sc.enabled ? "Turn off" : "Turn on", "btn small", async () => {
+			await schedulesRequest({ action: "save", schedule: { ...sc, enabled: !sc.enabled } }).catch((e) => toast(e.message, "error"));
+			renderSchedules(page);
+		}),
+		button("Remove", "btn small", async () => {
+			await schedulesRequest({ action: "remove", id: sc.id }).catch((e) => toast(e.message, "error"));
+			renderSchedules(page);
+		}),
+	);
+	card.append(actions);
+	return card;
+}
+
+function scheduleForm(page, sc) {
+	const card = el("div", "card wide schedule-form");
+	card.append(el("b", "", sc ? `Edit ${sc.name}` : "New schedule"));
+	const field = (label, input) => {
+		const l = el("label", "field");
+		l.append(el("span", "field-label", label), input);
+		return l;
+	};
+	const name = Object.assign(el("input"), { value: sc?.name ?? "", placeholder: "Morning summary" });
+	const prompt = Object.assign(el("textarea"), { value: sc?.prompt ?? "", rows: 4, placeholder: `What should ${config.title} do each time?` });
+	const repeat = el("select");
+	for (const [v, l] of [
+		["daily", "Every day"],
+		["weekdays", "Weekdays (Mon-Fri)"],
+		["weekly", "Every week"],
+		["hourly", "Every few hours"],
+	]) repeat.append(Object.assign(el("option", "", l), { value: v, selected: (sc?.repeat ?? "daily") === v }));
+	const time = Object.assign(el("input"), { type: "time", value: sc?.time ?? "09:00" });
+	const day = el("select");
+	DAYS.forEach((d, i) => day.append(Object.assign(el("option", "", d), { value: String(i), selected: (sc?.day ?? 1) === i })));
+	const every = Object.assign(el("input"), { type: "number", min: 1, max: 168, value: String(sc?.every ?? 4) });
+	const timeField = field("At", time);
+	const dayField = field("On", day);
+	const everyField = field("Every (hours)", every);
+	const sync = () => {
+		timeField.hidden = repeat.value === "hourly";
+		dayField.hidden = repeat.value !== "weekly";
+		everyField.hidden = repeat.value !== "hourly";
+	};
+	repeat.onchange = sync;
+	sync();
+	const when = el("div", "schedule-when");
+	when.append(field("Repeat", repeat), dayField, timeField, everyField);
+	card.append(field("Name", name), field("Prompt", prompt), when);
+	const actions = el("div", "card-actions");
+	actions.append(
+		button("Save", "btn primary small", async () => {
+			try {
+				await schedulesRequest({
+					action: "save",
+					schedule: { id: sc?.id, name: name.value, prompt: prompt.value, repeat: repeat.value, time: time.value, day: Number(day.value), every: Number(every.value), enabled: sc?.enabled ?? true },
+				});
+				toast("Schedule saved.");
+				renderSchedules(page);
+			} catch (error) {
+				toast(`Could not save: ${error.message}`, "error");
+			}
+		}),
+		button("Cancel", "btn small", () => renderSchedules(page)),
+	);
+	card.append(actions);
+	setTimeout(() => name.focus(), 0);
+	return card;
+}
+
+// ---------------------------------------------------------------------------
+// Safety: sandbox mode (Settings)
+// ---------------------------------------------------------------------------
+
+const SANDBOX_MODES = [
+	["off", "Off", "Guards from the harness spec only. The agent works with your user's permissions."],
+	["workspace", "Workspace only", "File tools stay inside the workspace folder, and every shell command needs your OK (blocked in scheduled and headless runs)."],
+	["read-only", "Read-only", "The agent can read inside the workspace folder, but can't write files or run shell commands."],
+];
+
+async function renderSafety(box) {
+	let current;
+	try {
+		const res = await fetch("/api/sandbox", { headers: { "x-forge-token": token } });
+		current = await res.json();
+	} catch {
+		box.replaceChildren(el("p", "note", "Could not read the sandbox setting."));
+		return;
+	}
+	let mode = current.mode;
+	const options = el("div", "sandbox-options");
+	const folder = Object.assign(el("input"), { value: current.folder, spellcheck: false, placeholder: "Full path of the workspace folder" });
+	const folderRow = el("label", "field");
+	folderRow.append(el("span", "field-label", "Workspace folder"), folder, el("span", "field-hint", "The agent's files stay in here. Default: the folder the harness was started in."));
+	const draw = () => {
+		options.replaceChildren(
+			...SANDBOX_MODES.map(([value, label, help]) => {
+				const row = el("label", `sandbox-option${value === mode ? " on" : ""}`);
+				const radio = Object.assign(el("input"), { type: "radio", name: "sandbox", checked: value === mode });
+				radio.onchange = () => {
+					mode = value;
+					draw();
+				};
+				const text = el("span", "q-text");
+				text.append(el("b", "", label), el("span", "", help));
+				row.append(radio, text);
+				return row;
+			}),
+		);
+		folderRow.hidden = mode === "off";
+	};
+	draw();
+	const note = el(
+		"p",
+		"note",
+		"This is a policy inside the harness, not an operating-system sandbox: the harness's own custom tools and MCP servers run normally. For full isolation, run it in a container.",
+	);
+	const save = button("Save", "btn primary small", async () => {
+		if (busy) return toast("Wait for the agent to finish, then save.", "warning");
+		const res = await fetch("/api/sandbox", {
+			method: "POST",
+			headers: { "content-type": "application/json", "x-forge-token": token },
+			body: JSON.stringify({ mode, folder: mode === "off" ? "" : folder.value.trim(), sessionPath: currentSession }),
+		});
+		if (!res.ok) return toast(`Could not save: ${await res.text()}`, "error");
+		toast(`Sandbox: ${SANDBOX_MODES.find((m) => m[0] === mode)?.[1]}. Restarting the agent…`);
+		renderSafety(box);
+	});
+	const actions = el("div", "card-actions");
+	actions.append(save);
+	box.replaceChildren(options, folderRow, note, actions);
+}
+
+// ---------------------------------------------------------------------------
+// MCP servers (Settings)
+// ---------------------------------------------------------------------------
+
+async function mcpRequest(path, body) {
+	const res = await fetch(path, {
+		method: body ? "POST" : "GET",
+		headers: { "content-type": "application/json", "x-forge-token": token },
+		body: body ? JSON.stringify(body) : undefined,
+	});
+	if (!res.ok) throw new Error(await res.text());
+	return res.json();
+}
+
+async function renderMcp(box, editing) {
+	let data;
+	try {
+		data = await mcpRequest("/api/mcp");
+	} catch (error) {
+		box.replaceChildren(el("p", "note", `Could not read MCP servers: ${error.message}`));
+		return;
+	}
+	box.replaceChildren();
+	const grid = el("div", "provider-grid");
+	for (const sv of data.servers) grid.append(editing === sv.name ? mcpForm(box, sv) : mcpCard(box, sv));
+	if (editing === "") grid.append(mcpForm(box));
+	box.append(grid);
+	if (!data.servers.length && editing === undefined) box.append(el("p", "note", "No MCP servers yet."));
+
+	const actions = el("div", "card-actions");
+	if (editing === undefined) {
+		actions.append(button("Add server", "btn primary small", () => renderMcp(box, "")));
+		actions.append(button("Paste config", "btn small", () => mcpPaste(box)));
+	}
+	if (data.servers.length) {
+		const out = el("pre", "mcp-test");
+		out.hidden = true;
+		const test = button("Test connections", "btn small", async () => {
+			test.disabled = true;
+			test.textContent = "Testing…";
+			out.hidden = false;
+			out.textContent = "Connecting to each enabled server…";
+			try {
+				const r = await mcpRequest("/api/mcp/test", {});
+				out.textContent = r.output || (r.ok ? "All servers connected." : "Test failed.");
+				out.classList.toggle("bad", !r.ok);
+			} catch (error) {
+				out.textContent = error.message;
+			}
+			test.disabled = false;
+			test.textContent = "Test connections";
+		});
+		actions.append(test);
+		box.append(actions, out);
+	} else box.append(actions);
+}
+
+function mcpCard(box, sv) {
+	const card = el("div", "card provider");
+	const head = el("div", "card-head");
+	head.append(el("b", "", sv.name), el("span", `badge${sv.enabled ? " ok" : ""}`, sv.enabled ? (sv.kind === "http" ? "Remote" : "Local") : "Off"));
+	card.append(head);
+	if (sv.description) card.append(el("p", "note", sv.description));
+	const what = sv.kind === "http" ? sv.url : [sv.command, ...(sv.args ?? [])].join(" ");
+	card.append(el("code", "mcp-cmd", what ?? ""));
+	const meta = el("div", "meta");
+	meta.append(el("span", "chip", sv.exposure === "direct" ? "tools always loaded" : sv.exposure === "deferred" ? "tools loaded on demand" : sv.exposure));
+	for (const k of Object.keys(sv.env ?? {})) meta.append(el("span", "chip", k));
+	for (const k of Object.keys(sv.headers ?? {})) meta.append(el("span", "chip", k));
+	card.append(meta);
+	const actions = el("div", "card-actions");
+	actions.append(
+		button("Edit", "btn small", () => renderMcp(box, sv.name)),
+		button(sv.enabled ? "Turn off" : "Turn on", "btn small", () => mcpSave(box, { ...mcpUnmask(sv), enabled: !sv.enabled }, sv.name)),
+		button("Remove", "btn small", async () => {
+			try {
+				await mcpRequest("/api/mcp", { action: "remove", name: sv.name, sessionPath: currentSession });
+				toast(`${sv.name} removed. Restarting the agent…`);
+				renderMcp(box);
+			} catch (error) {
+				toast(`Could not remove: ${error.message}`, "error");
+			}
+		}),
+	);
+	card.append(actions);
+	return card;
+}
+
+/** A server as the form/API expects it (masked values are sent back unchanged and kept by the server). */
+function mcpUnmask(sv) {
+	return { name: sv.name, kind: sv.kind, command: sv.command, args: sv.args ?? [], cwd: sv.cwd, url: sv.url, env: sv.env, headers: sv.headers, exposure: sv.exposure, enabled: sv.enabled, description: sv.description };
+}
+
+const linesToMap = (text, sep) =>
+	Object.fromEntries(
+		text
+			.split("\n")
+			.map((l) => l.trim())
+			.filter(Boolean)
+			.map((l) => {
+				const i = l.indexOf(sep);
+				return i < 0 ? [l, ""] : [l.slice(0, i).trim(), l.slice(i + sep.length).trim()];
+			}),
+	);
+const mapToLines = (map, sep) => Object.entries(map ?? {}).map(([k, v]) => `${k}${sep}${v}`).join("\n");
+
+function mcpForm(box, sv) {
+	const card = el("div", "card provider mcp-form");
+	card.append(el("b", "", sv ? `Edit ${sv.name}` : "Add an MCP server"));
+	const field = (label, input, hint) => {
+		const l = el("label", "field");
+		l.append(el("span", "field-label", label), input);
+		if (hint) l.append(el("span", "field-hint", hint));
+		return l;
+	};
+	const input = (value = "", placeholder = "") => Object.assign(el("input"), { value, placeholder, spellcheck: false, autocomplete: "off" });
+	const area = (value = "", placeholder = "") => Object.assign(el("textarea"), { value, placeholder, rows: 3, spellcheck: false });
+
+	const name = input(sv?.name, "github");
+	let kind = sv?.kind ?? "stdio";
+	const seg = el("div", "seg");
+	const local = el("div", "mcp-kind");
+	const remote = el("div", "mcp-kind");
+	for (const [value, label] of [
+		["stdio", "Local program"],
+		["http", "Remote URL"],
+	]) {
+		const b = button(label, value === kind ? "on" : "", () => {
+			kind = value;
+			for (const other of seg.children) other.classList.toggle("on", other === b);
+			local.hidden = kind !== "stdio";
+			remote.hidden = kind !== "http";
+		});
+		seg.append(b);
+	}
+	const command = input(sv?.command, "npx");
+	const args = area((sv?.args ?? []).join("\n"), "-y\n@modelcontextprotocol/server-github");
+	const env = area(mapToLines(sv?.env, "="), "GITHUB_PERSONAL_ACCESS_TOKEN=ghp_…");
+	local.append(
+		field("Command", command, "One program, e.g. npx, uvx, node, or a full path"),
+		field("Arguments", args, "One per line"),
+		field("Environment variables", env, "NAME=value, one per line. Values are stored on this computer and masked here."),
+	);
+	const url = input(sv?.url, "https://example.com/mcp");
+	const headers = area(mapToLines(sv?.headers, ": "), "Authorization: Bearer …");
+	remote.append(field("URL", url, "Streamable HTTP endpoint (often ends in /mcp)"), field("Headers", headers, "Name: value, one per line. Leave empty for servers that sign in with OAuth."));
+	local.hidden = kind !== "stdio";
+	remote.hidden = kind !== "http";
+
+	const description = input(sv?.description, "What it gives the agent, in a sentence");
+	const deferred = Object.assign(el("input"), { type: "checkbox", checked: sv?.exposure === "deferred" });
+	const deferredRow = el("label", "check-row");
+	deferredRow.append(deferred, el("span", "", "Load its tools on demand (for servers with many tools)"));
+
+	card.append(field("Name", name, "Letters, digits, - and _"), seg, local, remote, field("Description", description), deferredRow);
+	const actions = el("div", "card-actions");
+	actions.append(
+		button("Save", "btn primary small", () =>
+			mcpSave(
+				box,
+				{
+					name: name.value.trim(),
+					kind,
+					command: command.value.trim(),
+					args: args.value.split("\n").map((a) => a.trim()).filter(Boolean),
+					env: linesToMap(env.value, "="),
+					url: url.value.trim(),
+					headers: linesToMap(headers.value, ":"),
+					description: description.value.trim(),
+					exposure: deferred.checked ? "deferred" : sv?.exposure && sv.exposure !== "deferred" ? sv.exposure : "direct",
+					enabled: sv?.enabled ?? true,
+				},
+				sv?.name,
+			),
+		),
+		button("Cancel", "btn small", () => renderMcp(box)),
+	);
+	card.append(actions);
+	setTimeout(() => name.focus(), 0);
+	return card;
+}
+
+async function mcpSave(box, server, previousName) {
+	if (busy) return toast("Wait for the agent to finish, then save.", "warning");
+	try {
+		await mcpRequest("/api/mcp", { action: "save", server, previousName, sessionPath: currentSession });
+		toast(`${server.name} saved. Restarting the agent…`);
+		renderMcp(box);
+	} catch (error) {
+		toast(`Could not save: ${error.message}`, "error");
+	}
+}
+
+/** Paste the JSON an MCP server's README gives (Claude Desktop / Cursor format, or a single entry). */
+function mcpPaste(box) {
+	const card = el("div", "card provider mcp-form");
+	const text = Object.assign(el("textarea"), { rows: 8, spellcheck: false, placeholder: '{ "mcpServers": { "github": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"] } } }' });
+	const single = Object.assign(el("input"), { placeholder: "Name, if the JSON is a single server (e.g. github)", spellcheck: false });
+	card.append(el("b", "", "Paste an MCP config"), el("p", "note", "The JSON from a server's README (the mcpServers block used by Claude Desktop, Cursor and others)."), text, single);
+	const actions = el("div", "card-actions");
+	actions.append(
+		button("Add", "btn primary small", async () => {
+			let parsed;
+			try {
+				parsed = JSON.parse(text.value);
+			} catch {
+				return toast("That isn't valid JSON.", "error");
+			}
+			const entries = parsed.mcpServers ?? parsed.servers ?? (parsed.command || parsed.url ? { [single.value.trim()]: parsed } : parsed);
+			let added = 0;
+			for (const [name, raw] of Object.entries(entries ?? {})) {
+				if (!raw || typeof raw !== "object") continue;
+				const server = { name, kind: raw.url ? "http" : "stdio", command: raw.command, args: raw.args ?? [], cwd: raw.cwd, env: raw.env, url: raw.url, headers: raw.headers, description: raw.description, exposure: raw.exposure ?? "direct", enabled: raw.enabled !== false };
+				try {
+					await mcpRequest("/api/mcp", { action: "save", server, sessionPath: currentSession });
+					added++;
+				} catch (error) {
+					toast(`${name}: ${error.message}`, "error");
+				}
+			}
+			if (added) toast(`Added ${added} server${added === 1 ? "" : "s"}. Restarting the agent…`);
+			renderMcp(box);
+		}),
+		button("Cancel", "btn small", () => renderMcp(box)),
+	);
+	card.append(actions);
+	box.replaceChildren(card);
+	text.focus();
+}
 
 function providerCard(p, modelCount, scope = "providers") {
 	const card = el("div", "card provider");
@@ -655,6 +1152,7 @@ async function saveCredentials(p, values, scope = "providers") {
 async function renderPage(which) {
 	const page = $("#page");
 	if (which === "settings") return renderSettings(page);
+	if (which === "schedules") return renderSchedules(page);
 	if (which === "views") {
 		page.replaceChildren(
 			pageHead(
@@ -1027,7 +1525,10 @@ function newTurn(userText, ts) {
 	const answer = el("div", "turn-answer");
 	node.append(worked, outputsEl, answer);
 	append(node);
-	turn = { node, worked, stateHost, label, list, outputs: outputsEl, answer, start: ts ?? Date.now(), end: 0, count: 0, files: new Map(), filesCard: null, current: null, running: true };
+	const usageEl = el("div", "turn-usage");
+	usageEl.hidden = true;
+	node.append(usageEl);
+	turn = { node, worked, stateHost, label, list, outputs: outputsEl, answer, usageEl, usage: emptyUsage(), start: ts ?? Date.now(), end: 0, count: 0, files: new Map(), filesCard: null, current: null, running: true };
 	return turn;
 }
 
@@ -1042,6 +1543,65 @@ function ensureTurn() {
 }
 
 /** Header of the steps group: live while running, "Worked for 12s · 6 steps" when finished. */
+// ---------------------------------------------------------------------------
+// Usage: tokens and estimated cost per answer, per chat, and in Settings
+// ---------------------------------------------------------------------------
+
+function emptyUsage() {
+	return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, cost: 0, replies: 0 };
+}
+
+/** Adds one assistant message's usage (pi reports tokens and cost on every reply). */
+function addUsage(t, usage) {
+	if (!t || !usage) return;
+	const u = t.usage;
+	u.input += usage.input ?? 0;
+	u.output += usage.output ?? 0;
+	u.cacheRead += usage.cacheRead ?? 0;
+	u.cacheWrite += usage.cacheWrite ?? 0;
+	u.total += usage.totalTokens ?? (usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
+	u.cost += usage.cost?.total ?? 0;
+	u.replies += 1;
+	renderTurnUsage(t);
+}
+
+function fmtTokens(n) {
+	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+	if (n >= 1000) return `${(n / 1000).toFixed(n >= 100_000 ? 0 : 1)}k`;
+	return String(n);
+}
+
+function fmtCost(usd) {
+	if (!usd) return "$0";
+	if (usd < 0.01) return "<$0.01";
+	return "$" + (usd < 10 ? usd.toFixed(2) : usd.toFixed(1));
+}
+
+function renderTurnUsage(t) {
+	if (!t?.usageEl || !t.usage.replies) return;
+	const u = t.usage;
+	t.usageEl.hidden = false;
+	t.usageEl.textContent = `${fmtTokens(u.total)} tokens · ${fmtCost(u.cost)}`;
+	t.usageEl.title =
+		`Input ${fmtTokens(u.input)} · cached ${fmtTokens(u.cacheRead)} · cache write ${fmtTokens(u.cacheWrite)} · output ${fmtTokens(u.output)}\n` +
+		`Estimated cost ${u.cost.toFixed(4)} USD over ${u.replies} model call${u.replies === 1 ? "" : "s"}, at the model's list price`;
+}
+
+/** The open chat's totals in the top bar, from pi's session stats. */
+async function refreshChatUsage() {
+	const chip = $("#chat-usage");
+	const stats = await call({ type: "get_session_stats" });
+	const d = stats.success ? stats.data : null;
+	if (!d || !d.tokens?.total) {
+		chip.hidden = true;
+		return;
+	}
+	chip.hidden = false;
+	chip.textContent = fmtCost(d.cost);
+	const ctx = d.contextUsage?.contextWindow ? ` · context ${Math.round(d.contextUsage.percent ?? 0)}% of ${fmtTokens(d.contextUsage.contextWindow)}` : "";
+	chip.title = `This chat: ${fmtTokens(d.tokens.total)} tokens, about ${(d.cost ?? 0).toFixed(3)} USD${ctx}`;
+}
+
 function updateWorkedLabel(t = turn) {
 	if (!t || t.count === 0) return;
 	const stepsText = `${t.count} step${t.count === 1 ? "" : "s"}`;
@@ -1062,6 +1622,7 @@ function updateWorkedLabel(t = turn) {
 
 function closeTurn(t, endTs) {
 	if (!t) return;
+	renderTurnUsage(t);
 	t.running = false;
 	t.end = endTs || Date.now();
 	if (t.count > 0) {
@@ -1222,6 +1783,7 @@ function renderMessages(messages) {
 			closeTurn(turn, lastTimestamp);
 			newTurn(textOf(m.content), m.timestamp);
 		} else if (m.role === "assistant") {
+			addUsage(ensureTurn(), m.usage);
 			const t = ensureTurn();
 			for (const part of Array.isArray(m.content) ? m.content : []) {
 				if (part.type === "text") addAnswerText(t, part.text);
@@ -1233,6 +1795,7 @@ function renderMessages(messages) {
 		if (m.timestamp && (m.role === "user" || m.role === "assistant" || m.role === "toolResult")) lastTimestamp = m.timestamp;
 	}
 	if (!busy) closeTurn(turn, lastTimestamp);
+	refreshChatUsage();
 	const firstUser = messages.find((m) => m.role === "user");
 	return firstUser ? textOf(firstUser.content).replace(/\s+/g, " ").trim() : "";
 }
@@ -1591,6 +2154,7 @@ function onEvent(event) {
 		case "message_end":
 			if (event.message.role === "assistant") {
 				const t = ensureTurn();
+				addUsage(t, event.message.usage);
 				const text = textOf(event.message.content);
 				if (t.current) {
 					if (text.trim()) renderMarkdown(t.current.el, text);
@@ -1650,6 +2214,7 @@ function onEvent(event) {
 
 /** After a run: the session file now exists, so refresh the title and the chats list. */
 async function refreshAfterRun() {
+	refreshChatUsage();
 	const state = await call({ type: "get_state" });
 	if (state.success) {
 		currentSession = state.data.sessionFile ?? currentSession;
@@ -2235,6 +2800,14 @@ function handle(event) {
 			replaying = false;
 			reloadChat().then(() => showNextDialog());
 			return;
+		case "forge_schedule":
+			if (replaying) return;
+			if (event.status === "running") toast(`Scheduled run started: ${event.name}`);
+			else if (event.status === "done") toast(`Scheduled run finished: ${event.name} (${fmtCost(event.cost ?? 0)})`);
+			else toast(`Scheduled run failed: ${event.name}. ${event.error ?? ""}`, "error");
+			if (event.status !== "running") loadSessions();
+			if (mode === "schedules") renderPage("schedules");
+			return;
 		case "forge_harness_updated":
 			if (!replaying) harnessUpdated(event);
 			return;
@@ -2242,7 +2815,7 @@ function handle(event) {
 			setTimeout(async () => {
 				await reloadChat();
 				if (mode === "settings") renderPage("settings");
-				toast("Agent restarted with the new keys.");
+				toast("Agent restarted with the new settings.");
 			}, 600);
 			return;
 		case "forge_ui_answered":

@@ -123,11 +123,29 @@ not generic advice. The harness's agent sees each skill's description and loads 
 3. `forge_smoke` with a realistic `prompt` that should call the main tools; check the tools ran and returned the expected views.
 4. If a custom view was needed: `view-builder` skill, then regenerate.
 
-## 5. Hand over
+## 5. Package it (the final output)
+A finished harness ends as an app the user can run and share. Ask with `forge_ask` (one multi-select question):
+"Package <Title> as an app on your Desktop? Pick the systems:"
+- Windows (x64): pre-ticked when this computer is Windows. Use `windows-x64`, or `windows-arm64` for ARM PCs.
+- macOS, Apple Silicon (M1 and later): `darwin-arm64`.
+- macOS, Intel: `darwin-x64`.
+- Linux (x64): `linux-x64`.
+- Not now.
+
+Then call `forge_package` once with `targets` set to every system they picked and `desktop: true`. Each package lands on
+their Desktop as a folder plus a zip to share. Builds for other systems are cross-compiled here and can't be test-run on
+this computer, so say so. macOS and Linux users run `chmod +x` once (the package's README explains it, and the macOS
+quarantine step). If a build fails, report it and keep the others.
+
+## 6. Hand over
 Tell the user, briefly:
-- `node harnesses/<name>/bin/<name>.ts`: terminal UI
+- The packages on their Desktop (a folder and a zip per system). They run without Node or this repo:
+  `<name> web` (or the `<name>-web` launcher) for the browser UI.
+- From the repo: `node harnesses/<name>/bin/<name>.ts` for the terminal UI
 - `node harnesses/<name>/bin/<name>.ts web`: browser UI with the views (and `/preview` for all views)
 - `node harnesses/<name>/bin/<name>.ts -p "..."` / `--mode json` / `--mode rpc`: headless
 - Keys: which ones to add, and where: **Settings → <Title> keys** in the browser, `/keys` in the terminal, or the environment variables (for headless use)
 - Skills: the ones it has, and that `/skill:<name>` runs one directly
+- In the browser UI: Settings has MCP servers (connect more tools), Safety (sandbox mode) and Usage (tokens and cost);
+  the Schedules page runs prompts on their own
 - To grow it later: the **Add to <Title>** page in its browser sidebar (a pi-Forge chat just for that harness, which reloads it when done), or ask pi-Forge here ("update <name>: ...").

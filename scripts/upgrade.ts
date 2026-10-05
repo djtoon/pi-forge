@@ -100,7 +100,15 @@ if (!tsc.ok) failures.push("type-check failed");
 // 4. smoke tests ------------------------------------------------------------------
 heading(`smoke tests${live ? " (load + live)" : " (load)"}`);
 for (const dir of harnessDirs()) {
-	const load = await loadCheck(dir);
+	let load: Awaited<ReturnType<typeof loadCheck>>;
+	try {
+		load = await loadCheck(dir);
+	} catch (error) {
+		// e.g. a harness that is still being built and was never generated: report it, check the rest.
+		console.log(`FAIL load  ${rel(dir)}  ${error instanceof Error ? error.message : String(error)}`);
+		failures.push(`${rel(dir)}: load check failed`);
+		continue;
+	}
 	console.log(`${load.ok ? "ok  " : "FAIL"} load  ${rel(dir)}  ${load.ms} ms  ${load.ok ? `model ${load.model}, skills: ${load.skills.join(", ") || "none"}` : (load.error ?? "")}`);
 	for (const line of load.stderr) console.log(`       ${line}`);
 	if (!load.ok) {

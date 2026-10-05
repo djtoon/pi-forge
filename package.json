@@ -1,6 +1,6 @@
 {
 	"name": "pi-forge",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"private": true,
 	"description": "pi-Forge: an agent harness that builds agent harnesses, on top of pi",
 	"license": "MIT",

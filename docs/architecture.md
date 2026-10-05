@@ -104,6 +104,21 @@ The page at `/build` is the same app pointed at the builder (`?agent=builder` on
 
 The change is detected by comparing a signature of `harness.yaml`, the manifest and `custom/` before and after the run.
 
+## Settings that apply at start
+
+Each is per harness, in `~/.forge/<name>/`, and read when the harness starts. Saving one restarts the agent, which reopens the chat.
+- **`mcp.json`:** MCP servers, connected by pi itself. Servers added in Settings default to `direct` exposure (or `deferred` for large servers), so they work even when a harness turns off codemode.
+- **`forge-settings.json`:** the sandbox mode and folder. The launcher passes them in `FORGE_SANDBOX`, and the generated `forge-sandbox` extension (`templates/guards/sandbox.ts`) enforces them on `tool_call`.
+- **`schedules.json`:** see Schedules below.
+
+## Schedules
+
+The web server checks every 30 seconds and starts each due schedule as `<harness> -p "<prompt>" --name "⏰ <name> · <time>"`, a normal headless run that pi saves as a chat. It records the result (ok, session, cost) and tells the page. Runs missed while the UI was closed are skipped, not caught up.
+
+## Usage
+
+pi stores each reply's token usage and cost (at the model's list price). The page sums them per answer, `get_session_stats` gives the chat total, and `/api/usage` scans the harness's session files for today, this month, all time and per model.
+
 ## Live status in the browser
 
 The server relays pi's RPC events over SSE. It keeps the ones that matter for a replay, stamped with the time they happened (`_ts`): run, tool, queue and phase-start events, but not every text delta. It also tracks the tool call being streamed (name, target file or command, size). So a page that loads mid-run can show the current step, how long it has run, and messages queued while the agent works.

@@ -89,6 +89,11 @@ export const HarnessSchema = Type.Object(
 				{
 					protected_paths: Type.Optional(Type.Array(Type.String(), { description: "Globs write/edit may not touch" })),
 					confirm_bash: Type.Optional(Type.Array(Type.String(), { description: "Substrings that need confirmation" })),
+					sandbox: Type.Optional(
+						Type.Union([Type.Literal("off"), Type.Literal("workspace"), Type.Literal("read-only")], {
+							description: "Default sandbox mode (users can change it in Settings): workspace = file tools stay in the workspace folder and shell commands need approval; read-only = no writes, no shell",
+						}),
+					),
 				},
 				{ additionalProperties: false },
 			),

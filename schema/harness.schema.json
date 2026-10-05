@@ -103,6 +103,23 @@
 						"type": "string"
 					},
 					"description": "Substrings that need confirmation"
+				},
+				"sandbox": {
+					"anyOf": [
+						{
+							"type": "string",
+							"const": "off"
+						},
+						{
+							"type": "string",
+							"const": "workspace"
+						},
+						{
+							"type": "string",
+							"const": "read-only"
+						}
+					],
+					"description": "Default sandbox mode (users can change it in Settings): workspace = file tools stay in the workspace folder and shell commands need approval; read-only = no writes, no shell"
 				}
 			},
 			"additionalProperties": false

@@ -8,7 +8,11 @@ import { fileURLToPath } from "node:url";
 import { colorToHex, parseColor } from "@earendil-works/pi-tui";
 import { type HarnessSpec, listSkills, loadSpec, readSpecFile, themeName } from "@forge/harness-spec";
 import { credentialStatus, harnessCredentials, updateCredentials } from "./credentials.ts";
+import { activeSandbox, saveSandbox } from "./harness-settings.ts";
+import { listMcpServers, mcpFile, removeMcpServer, saveMcpServer, testMcpServers } from "./mcp.ts";
+import { describeRepeat, readSchedules, removeSchedule, saveSchedule, startScheduler } from "./schedules.ts";
 
+export { activeSandbox, readHarnessSettings } from "./harness-settings.ts";
 export { applySavedCredentials, CredentialStore, credentialsFile, harnessCredentials, harnessCredentialsFile } from "./credentials.ts";
 
 /** True inside a forge-packaged executable (Bun compiled binary): files then live next to the executable. */
@@ -546,6 +550,64 @@ function harnessSignature(harnessDir: string): string {
 	return parts.join("|");
 }
 
+interface UsageBucket {
+	cost: number;
+	tokens: number;
+	chats: number;
+}
+
+/**
+ * Tokens and estimated cost across session files (pi stores each reply's usage, priced at the model's list price):
+ * today, this calendar month, all time, and per model.
+ */
+export function usageSummary(dirs: string[]) {
+	const now = new Date();
+	const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+	const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+	const bucket = (): UsageBucket => ({ cost: 0, tokens: 0, chats: 0 });
+	const today = bucket();
+	const month = bucket();
+	const total = bucket();
+	const byModel = new Map<string, { model: string; cost: number; tokens: number }>();
+	for (const dir of dirs) {
+		if (!existsSync(dir)) continue;
+		for (const file of readdirSync(dir).filter((f) => f.endsWith(".jsonl"))) {
+			const seen = { today: false, month: false, total: false };
+			for (const line of readFileSync(join(dir, file), "utf8").split("\n")) {
+				if (!line.includes('"usage"')) continue;
+				let entry: { message?: { role?: string; model?: string; timestamp?: number; usage?: { totalTokens?: number; cost?: { total?: number } } } };
+				try {
+					entry = JSON.parse(line) as typeof entry;
+				} catch {
+					continue;
+				}
+				const m = entry.message;
+				if (m?.role !== "assistant" || !m.usage) continue;
+				const cost = m.usage.cost?.total ?? 0;
+				const tokens = m.usage.totalTokens ?? 0;
+				const ts = m.timestamp ?? 0;
+				const add = (b: UsageBucket, key: keyof typeof seen) => {
+					b.cost += cost;
+					b.tokens += tokens;
+					if (!seen[key]) {
+						seen[key] = true;
+						b.chats += 1;
+					}
+				};
+				add(total, "total");
+				if (ts >= monthStart) add(month, "month");
+				if (ts >= dayStart) add(today, "today");
+				const name = (m.model ?? "unknown").replace(/^global\.anthropic\./, "");
+				const row = byModel.get(name) ?? { model: name, cost: 0, tokens: 0 };
+				row.cost += cost;
+				row.tokens += tokens;
+				byModel.set(name, row);
+			}
+		}
+	}
+	return { today, month, total, byModel: [...byModel.values()].sort((a, b) => b.cost - a.cost) };
+}
+
 /** Sessions stored directly in a folder (pi's --session-dir). */
 function listSessionFiles(dir: string): SessionSummary[] {
 	return existsSync(dir) ? listSessionsIn(dir) : [];
@@ -624,6 +686,15 @@ export async function startWeb(options: WebOptions): Promise<void> {
 		builder.publish(JSON.stringify(summary));
 	}
 	main.onSettled = reloadHarness;
+
+	// Schedules: prompts this harness runs on its own while this web UI is running (see schedules.ts).
+	const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(process.env.FORGE_HOME ?? join(homedir(), ".forge"), spec.name);
+	const scheduler = startScheduler({
+		agentDir,
+		launcher: { command: process.execPath, args: isPackagedBinary ? [] : [options.binPath], cwd: process.cwd() },
+		sessionDir: sessionDir(process.cwd()),
+		onEvent: (event) => main.publish(JSON.stringify(event), false),
+	});
 
 	const buildConfig = () => ({
 		brand: readBrand(harnessDir),
@@ -749,6 +820,76 @@ export async function startWeb(options: WebOptions): Promise<void> {
 				if (req.headers["x-forge-token"] !== token) return send(res, 401, "bad token");
 				return send(res, 200, JSON.stringify(config.isForge ? listHarnesses(options.templatesDir) : []), "application/json");
 			}
+			if (url.pathname === "/api/mcp" || url.pathname === "/api/mcp/test") {
+				if (req.headers["x-forge-token"] !== token) return send(res, 401, "bad token");
+				// This harness's own MCP servers: <agent dir>/mcp.json, which pi reads when a session starts.
+				const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(process.env.FORGE_HOME ?? join(homedir(), ".forge"), spec.name);
+				const listing = () => JSON.stringify({ servers: listMcpServers(agentDir), file: mcpFile(agentDir) });
+				if (url.pathname === "/api/mcp/test" && req.method === "POST") {
+					const launcher = isPackagedBinary ? [] : [options.binPath];
+					return send(res, 200, JSON.stringify(await testMcpServers(process.execPath, launcher, process.cwd())), "application/json");
+				}
+				if (req.method === "GET") return send(res, 200, listing(), "application/json");
+				if (req.method === "POST") {
+					const body = JSON.parse(await readBody(req, 64_000)) as { action?: unknown; server?: unknown; previousName?: unknown; name?: unknown; sessionPath?: unknown };
+					try {
+						if (body.action === "remove" && typeof body.name === "string") removeMcpServer(agentDir, body.name);
+						else if (body.action === "save" && body.server && typeof body.server === "object") {
+							saveMcpServer(agentDir, body.server as Record<string, unknown>, typeof body.previousName === "string" ? body.previousName : undefined);
+						} else return send(res, 400, "action must be save (with server) or remove (with name)");
+					} catch (error) {
+						return send(res, 400, error instanceof Error ? error.message : String(error));
+					}
+					// pi connects MCP servers when a session starts: restart the agent and reopen the chat.
+					main.restart(typeof body.sessionPath === "string" && body.sessionPath ? body.sessionPath : main.lastSession);
+					return send(res, 200, listing(), "application/json");
+				}
+				return send(res, 405, "method not allowed");
+			}
+			if (url.pathname === "/api/schedules") {
+				if (req.headers["x-forge-token"] !== token) return send(res, 401, "bad token");
+				const listing = () =>
+					JSON.stringify({
+						schedules: readSchedules(agentDir).map((sc) => ({ ...sc, when: describeRepeat(sc), next: scheduler.next(sc.id) ?? null, running: scheduler.running.has(sc.id) })),
+						command: isPackagedBinary ? `"${process.execPath}" -p "<prompt>"` : `node "${options.binPath}" -p "<prompt>"`,
+					});
+				if (req.method === "GET") return send(res, 200, listing(), "application/json");
+				if (req.method === "POST") {
+					const body = JSON.parse(await readBody(req, 64_000)) as { action?: unknown; schedule?: unknown; id?: unknown };
+					try {
+						if (body.action === "save" && body.schedule && typeof body.schedule === "object") saveSchedule(agentDir, body.schedule as Record<string, unknown>);
+						else if (body.action === "remove" && typeof body.id === "string") removeSchedule(agentDir, body.id);
+						else if (body.action === "run" && typeof body.id === "string") {
+							if (!scheduler.runNow(body.id)) return send(res, 409, "It is already running");
+						} else return send(res, 400, "action must be save, remove or run");
+					} catch (error) {
+						return send(res, 400, error instanceof Error ? error.message : String(error));
+					}
+					scheduler.replan();
+					return send(res, 200, listing(), "application/json");
+				}
+				return send(res, 405, "method not allowed");
+			}
+			if (url.pathname === "/api/sandbox") {
+				if (req.headers["x-forge-token"] !== token) return send(res, 401, "bad token");
+				const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(process.env.FORGE_HOME ?? join(homedir(), ".forge"), spec.name);
+				if (req.method === "POST") {
+					const body = JSON.parse(await readBody(req, 16_000)) as { mode?: unknown; folder?: unknown; sessionPath?: unknown };
+					try {
+						saveSandbox(agentDir, body);
+					} catch (error) {
+						return send(res, 400, error instanceof Error ? error.message : String(error));
+					}
+					// The harness reads the sandbox when it starts: restart it and reopen the chat.
+					main.restart(typeof body.sessionPath === "string" && body.sessionPath ? body.sessionPath : main.lastSession);
+				}
+				return send(res, 200, JSON.stringify(activeSandbox(spec, agentDir)), "application/json");
+			}
+			if (req.method === "GET" && url.pathname === "/api/usage") {
+				if (req.headers["x-forge-token"] !== token) return send(res, 401, "bad token");
+				const dirs = [sessionDir(process.cwd()), builderSessions].filter((d): d is string => Boolean(d));
+				return send(res, 200, JSON.stringify(usageSummary(dirs)), "application/json");
+			}
 			if (req.method === "GET" && url.pathname === "/api/sessions") {
 				if (req.headers["x-forge-token"] !== token) return send(res, 401, "bad token");
 				const list = url.searchParams.get("agent") === "builder" ? listSessionFiles(builderSessions) : listSessions(process.cwd());
@@ -790,6 +931,7 @@ export async function startWeb(options: WebOptions): Promise<void> {
 	if (options.open !== false) openBrowser(url);
 
 	const stop = () => {
+		scheduler.stop();
 		main.stop();
 		builder.stop();
 		server.close();

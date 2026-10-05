@@ -557,62 +557,77 @@ const forgePromoteView = defineTool({
 	renderCall: (args, theme) => callLine(theme, "forge promote view", `${args.harness}/${args.view}`),
 });
 
+const PACK_TARGETS = ["windows-x64", "windows-arm64", "linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"] as const;
+
 const forgePackage = defineTool({
 	name: "forge_package",
 	label: "Package",
 	description:
-		"Package a generated harness as a standalone program (Bun-compiled executable plus its harness, web UI and assets in one folder). " +
+		"Package a generated harness as a standalone program for one or more systems (Bun-compiled executable plus its harness, web UI and assets in one folder). " +
 		"The result runs without Node, npm, or this repo: `<name> web` for the browser UI, `<name>` for the terminal, `-p` for headless. " +
-		"Default target is this computer; cross-compile with target. Run forge_smoke first.",
+		"With desktop: true each package goes to the user's Desktop, with a .zip ready to share. Run forge_smoke first.",
 	parameters: Type.Object({
 		harness: Type.String({ description: 'Harness name or folder, e.g. "chem"' }),
-		target: Type.Optional(
-			StringEnum(["windows-x64", "windows-arm64", "linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"] as const, {
-				description: "Platform to build for. Default: this computer.",
+		targets: Type.Optional(
+			Type.Array(StringEnum(PACK_TARGETS), {
+				description: "Systems to build for: windows-x64, windows-arm64, linux-x64, linux-arm64, darwin-arm64 (Apple Silicon Macs), darwin-x64 (Intel Macs). Default: this computer.",
 			}),
 		),
+		target: Type.Optional(StringEnum(PACK_TARGETS, { description: "Single system (older form of targets)" })),
+		desktop: Type.Optional(Type.Boolean({ description: "Put the packages on the user's Desktop and zip each one (default false: dist/ in the repo)" })),
 	}),
 	executionMode: "sequential",
 	async execute(_id, params, signal, onUpdate) {
 		const dir = resolveHarness(params.harness);
-		onUpdate?.({ content: [{ type: "text", text: "compiling (this takes up to a minute)…" }], details: undefined });
-		const script = join(REPO_ROOT, "packages", "forge-gen", "src", "pack.ts");
-		const args = [script, dir, ...(params.target ? ["--target", params.target] : [])];
-		const { code, out } = await new Promise<{ code: number; out: string }>((resolveRun) => {
-			const child = spawn(process.execPath, args, { cwd: REPO_ROOT, signal, stdio: ["ignore", "pipe", "pipe"] });
-			let text = "";
-			child.stdout.on("data", (d: Buffer) => {
-				text += d.toString("utf8");
-			});
-			child.stderr.on("data", (d: Buffer) => {
-				text += d.toString("utf8");
-			});
-			child.on("close", (c) => resolveRun({ code: c ?? 1, out: text }));
-			child.on("error", (e) => resolveRun({ code: 1, out: e.message }));
-		});
-		const clean = out
-			.split(/\r?\n/)
-			.filter((l) => l.trim() && !/ExperimentalWarning|trace-warnings|DeprecationWarning/.test(l))
-			.join("\n");
-		if (code !== 0) throw new Error(`Packaging failed:\n${clean.slice(-2000)}`);
-		const match = /packaged (.+) \((\S+), (\d+) MB\)/.exec(clean);
-		const outDir = match?.[1] ?? "dist";
 		const name = (readSpecFile(dir) as { name?: string }).name ?? params.harness;
-		const exe = (match?.[2] ?? "").startsWith("windows") ? `${name}.exe` : name;
+		const targets = params.targets?.length ? [...new Set(params.targets)] : params.target ? [params.target] : [undefined];
+		const script = join(REPO_ROOT, "packages", "forge-gen", "src", "pack.ts");
+		const rows: (string | number | null)[][] = [];
+		const lines: string[] = [];
+		for (const [i, target] of targets.entries()) {
+			onUpdate?.({ content: [{ type: "text", text: `compiling ${target ?? "for this computer"} (${i + 1}/${targets.length}, up to a minute each)…` }], details: undefined });
+			const args = [script, dir, ...(target ? ["--target", target] : []), ...(params.desktop ? ["--desktop", "--zip"] : [])];
+			const { code, out } = await new Promise<{ code: number; out: string }>((resolveRun) => {
+				const child = spawn(process.execPath, args, { cwd: REPO_ROOT, signal, stdio: ["ignore", "pipe", "pipe"] });
+				let text = "";
+				child.stdout.on("data", (d: Buffer) => {
+					text += d.toString("utf8");
+				});
+				child.stderr.on("data", (d: Buffer) => {
+					text += d.toString("utf8");
+				});
+				child.on("close", (c) => resolveRun({ code: c ?? 1, out: text }));
+				child.on("error", (e) => resolveRun({ code: 1, out: e.message }));
+			});
+			const clean = out
+				.split(/\r?\n/)
+				.filter((l) => l.trim() && !/ExperimentalWarning|trace-warnings|DeprecationWarning/.test(l))
+				.join("\n");
+			const match = /packaged (.+) \((\S+), (\d+) MB\)/.exec(clean);
+			const archive = /archive (.+)/.exec(clean)?.[1];
+			if (code !== 0 || !match) {
+				rows.push([target ?? "this computer", "FAILED", null, clean.slice(-400)]);
+				lines.push(`${target ?? "this computer"}: failed\n${clean.slice(-1500)}`);
+				continue;
+			}
+			const [, outDir, built, mb] = match;
+			const exe = (built ?? "").startsWith("windows") ? `${name}.exe` : name;
+			rows.push([built ?? "", `${mb} MB`, outDir ?? "", archive ?? `run: ${exe} web`]);
+			lines.push(`${built}: ${outDir}${archive ? ` (zip: ${archive})` : ""}`);
+		}
 		const table: DataTableData = {
-			title: `Packaged ${name} (${match?.[2] ?? "?"}, ${match?.[3] ?? "?"} MB)`,
-			columns: ["What", "Value"],
-			rows: [
-				["Folder", outDir],
-				["Browser UI", `${outDir}/${exe} web`],
-				["Terminal UI", `${outDir}/${exe}`],
-				["Headless", `${outDir}/${exe} -p "…"`],
-				["Share", "zip the whole folder; the program loads harness/, web/ and theme/ from next to itself"],
-			],
+			title: `Packaged ${name}`,
+			columns: ["System", "Size", "Folder", "Share / run"],
+			rows,
 		};
-		return viewResult(`${clean}\nShare the whole folder ${outDir}.`, "data-table", table);
+		const failed = rows.filter((r) => r[1] === "FAILED").length;
+		const tail = params.desktop
+			? "Each folder is on the Desktop with a zip next to it. Share the zip: unzip, then run the program (or the -web launcher) inside."
+			: "Share a whole folder (zip it): the program loads harness/, web/ and theme/ from next to itself.";
+		return viewResult(`${lines.join("\n")}\n${failed ? `${failed} build(s) failed.\n` : ""}${tail}`, "data-table", table);
 	},
-	renderCall: (args, theme) => callLine(theme, "forge package", `${args.harness}${args.target ? ` (${args.target})` : ""}`),
+	renderCall: (args, theme) =>
+		callLine(theme, "forge package", `${args.harness}${args.targets?.length ? ` (${args.targets.join(", ")})` : args.target ? ` (${args.target})` : ""}${args.desktop ? " → Desktop" : ""}`),
 });
 
 export default function (pi: ExtensionAPI) {

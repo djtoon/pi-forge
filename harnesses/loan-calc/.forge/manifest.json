@@ -8,6 +8,8 @@
 		"extensions/forge-header.ts": "4836749b88c921ef",
 		"forge_modules/guards/guards.ts": "331aa83ba9b8f453",
 		"extensions/forge-guards.ts": "9ff7681485b8c7d5",
+		"forge_modules/guards/sandbox.ts": "9e057c5d3e825056",
+		"extensions/forge-sandbox.ts": "ecbbd20c42b3b84f",
 		"forge_modules/views/contract.ts": "7c9fb4353aa5839b",
 		"forge_modules/ui/views.ts": "106df82a93c791a4",
 		"forge_modules/views/chart/sample.json": "a77324c6bd8ac71e",

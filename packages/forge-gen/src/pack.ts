@@ -2,7 +2,10 @@
 /**
  * Package a harness as a standalone program (no Node, npm, or forge checkout needed to run it):
  *
- *   npm run package -- harnesses/chem [--target windows-x64|linux-x64|linux-arm64|darwin-arm64|darwin-x64] [--out dir]
+ *   npm run package -- harnesses/chem [--target windows-x64|linux-x64|linux-arm64|darwin-arm64|darwin-x64] [--out dir] [--desktop] [--zip]
+ *
+ *   --desktop   put the folder on this computer's Desktop (<Desktop>/<name>-<target>)
+ *   --zip       also write <folder>.zip (or .tar.gz where zip isn't available) next to it, ready to share
  *
  * Output folder dist/<name>-<target>/:
  *   <name>(.exe)        Bun-compiled executable: pi + harness-core + web server
@@ -15,7 +18,8 @@
  */
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { loadSpec } from "@forge/harness-spec";
 import { REPO_ROOT } from "./index.ts";
@@ -50,6 +54,33 @@ function findBun(): string | undefined {
 		...(process.env.PATH ?? "").split(process.platform === "win32" ? ";" : ":").map((d) => (d ? join(d, exe) : "")),
 	];
 	return candidates.find((c) => c && existsSync(c) && spawnSync(c, ["--version"], { encoding: "utf8" }).status === 0);
+}
+
+/** This computer's Desktop folder (on Windows it can live in OneDrive), else the home folder. */
+export function desktopDir(): string {
+	if (process.platform === "win32") {
+		const r = spawnSync("powershell", ["-NoProfile", "-Command", "[Environment]::GetFolderPath('Desktop')"], { encoding: "utf8" });
+		const dir = r.stdout?.trim();
+		if (r.status === 0 && dir && existsSync(dir)) return dir;
+	}
+	const desktop = join(homedir(), "Desktop");
+	return existsSync(desktop) ? desktop : homedir();
+}
+
+/** Archive a package folder next to itself: .zip via tar -a (Windows 10+, macOS) or zip, else .tar.gz. */
+export function archiveFolder(dir: string): string {
+	const parent = dirname(dir);
+	const name = basename(dir);
+	const zip = join(parent, `${name}.zip`);
+	rmSync(zip, { force: true });
+	const tarZip = spawnSync("tar", ["-a", "-c", "-f", zip, "-C", parent, name], { encoding: "utf8" });
+	if (tarZip.status === 0 && existsSync(zip)) return zip;
+	const zipCmd = spawnSync("zip", ["-qr", zip, name], { cwd: parent, encoding: "utf8" });
+	if (zipCmd.status === 0 && existsSync(zip)) return zip;
+	const tgz = join(parent, `${name}.tar.gz`);
+	const tar = spawnSync("tar", ["-czf", tgz, "-C", parent, name], { encoding: "utf8" });
+	if (tar.status === 0 && existsSync(tgz)) return tgz;
+	throw new Error(`Could not archive ${dir}: ${(tarZip.stderr || tar.stderr || "no tar or zip found").trim()}`);
 }
 
 function folderSize(dir: string): number {
@@ -158,6 +189,16 @@ export function packHarness(harnessDir: string, options: { target?: Target; outD
 			"environment (ANTHROPIC_API_KEY, OPENAI_API_KEY, AWS_* for Bedrock, ...).",
 			"Chats, settings and keys are stored in ~/.forge on this computer.",
 			"Keep the files in this folder together: the program loads harness/, web/ and theme/ from next to itself.",
+			...(windows
+				? []
+				: [
+						"",
+						"First run on macOS or Linux: make the program executable, in this folder:",
+						`  chmod +x ${exeName} ${spec.name}-web`,
+						...(target.startsWith("darwin")
+							? ["macOS may say the app is from an unidentified developer. Allow it with:", "  xattr -dr com.apple.quarantine ."]
+							: []),
+					]),
 			"",
 		].join(windows ? "\r\n" : "\n"),
 	);
@@ -178,9 +219,13 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
 		process.exit(2);
 	}
 	try {
-		const result = packHarness(dir, { target: flag("--target") as Target | undefined, outDir: flag("--out") });
-		console.log(`packaged ${relative(process.cwd(), result.outDir) || result.outDir} (${result.target}, ${result.sizeMb} MB)`);
+		const target = flag("--target") as Target | undefined;
+		let outDir = flag("--out");
+		if (!outDir && argv.includes("--desktop")) outDir = join(desktopDir(), `${loadSpec(resolve(dir)).name}-${target ?? hostTarget()}`);
+		const result = packHarness(dir, { target, outDir });
+		console.log(`packaged ${result.outDir} (${result.target}, ${result.sizeMb} MB)`);
 		console.log(`run: ${relative(process.cwd(), result.executable)} web`);
+		if (argv.includes("--zip")) console.log(`archive ${archiveFolder(result.outDir)}`);
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exit(1);

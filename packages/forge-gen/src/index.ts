@@ -170,6 +170,16 @@ function planFiles(spec: HarnessSpec, harnessDir: string): Map<string, string> {
 		);
 	}
 
+	// Sandbox (always present; off unless chosen in Settings or set as guards.sandbox).
+	copyTemplate("guards/sandbox.ts");
+	files.set(
+		"extensions/forge-sandbox.ts",
+		`${TS_BANNER}import { createSandbox } from "../forge_modules/guards/sandbox.ts";
+
+export default createSandbox(${JSON.stringify(spec.guards?.sandbox ?? "off")});
+`,
+	);
+
 	// Views: copy each template view, generate the registry (used by custom tools via withViews)
 	// and the extension that pins panels.
 	const views = spec.ui?.views ?? [];

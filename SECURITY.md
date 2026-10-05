@@ -13,6 +13,14 @@ Harnesses are coding agents. They run on your machine **with your user's permiss
 
   With no one to ask (headless modes), a guarded call is blocked.
 
+## Sandbox mode
+
+Settings → Safety has two stricter modes:
+- **Workspace only:** file tools stay inside one folder, and every shell command needs your OK. Commands are blocked in scheduled and headless runs.
+- **Read-only:** reading inside the folder only.
+
+This is enforced by the harness itself, not the operating system: the harness's custom tools and MCP servers are normal code with your permissions. For untrusted harnesses, use a container (see pi's containerization docs).
+
 ## The web UI
 
 - It listens on `127.0.0.1` only.

@@ -72,7 +72,7 @@ npm run package -- harnesses/chem                        # for this computer
 npm run package -- harnesses/chem --target linux-x64     # windows-x64, windows-arm64, linux-x64, linux-arm64, darwin-x64, darwin-arm64
 ```
 
-You can also ask pi-Forge to "package chem". The result is `dist/<name>-<target>/`: an executable, the harness and the web UI files. **Zip the folder and share it.** The people you share it with don't need Node or this repo:
+Add `--desktop --zip` to put the folder on your Desktop with a zip next to it, ready to share. When pi-Forge finishes building a harness, it asks which systems to package it for (Windows, macOS on Apple Silicon or Intel, Linux) and puts each one on your Desktop. You can also ask pi-Forge to "package chem". The result is `dist/<name>-<target>/`: an executable, the harness and the web UI files. **Zip the folder and share it.** The people you share it with don't need Node or this repo:
 - `chem web`, or double-click `chem-web.cmd` on Windows: browser UI
 - `chem`: terminal UI
 - `chem -p "…"`: headless
@@ -100,6 +100,14 @@ you ⇄ pi-Forge (interview, plan, tools, views, logo)
 - **Keys:** tools that need an API key, an account ID or a program path declare it under `credentials:` in the spec. Each harness's **Settings** page then has a card per service (with a "Get a key" link and a *Needed* badge until it's set), the terminal has `/keys`, and headless runs read the environment variables. Saved keys live in `~/.forge/<name>/credentials.json`, are given to that harness alone, and the browser only sees masked previews. Tools read them with `requireKey("NAME")`, which tells the user where to add a missing key.
 - **Skills:** each harness's know-how (workflows, checklists, standards, reference knowledge) lives in `custom/skills/<name>/SKILL.md`. pi-Forge writes 2-5 per harness; the agent loads one when a task matches, `/skill:<name>` runs one directly, and the Tools page lists them. A harness loads only its own skills, not ones installed elsewhere on your machine.
 - **Add to harness:** every harness's browser UI has an **Add to <Title>** page in the sidebar. It's a chat with pi-Forge's agent, scoped to that one harness, for growing it: new tools, views, data sources with their keys, skills, fixes. pi-Forge writes, validates, generates and smoke-tests the change, then the harness's own agent reloads by itself, so the new tool works in the next message. These chats are kept per harness (`~/.forge/<name>/builder-sessions`). The page needs this repo, so packaged programs don't show it.
+- **MCP servers:** each harness's Settings page can connect MCP servers (GitHub, databases, Figma, Slack and others) by form or by pasting the JSON from a server's README. Their tools become the agent's tools. Servers are saved per harness in `~/.forge/<name>/mcp.json`, and **Test connections** runs pi's own check.
+- **Usage:** every answer shows its tokens and estimated cost, the top bar shows the open chat's total and context use, and Settings → Usage totals today, this month and all time by model.
+- **Safety:** Settings → Safety picks a sandbox mode:
+  - *Workspace only:* file tools stay inside one folder, and every shell command needs your OK.
+  - *Read-only:* no writes and no shell.
+
+  It's a policy inside the harness (its own custom tools and MCP servers run normally), so for full isolation use a container. `guards.sandbox` in the spec sets the default.
+- **Schedules:** the Schedules page runs prompts on their own (every day, weekdays, weekly, or every few hours) while the harness's web UI is running. Each run is saved as a chat with its cost. The page shows the command for Task Scheduler or cron, for runs while the UI is closed.
 - **Plans:** every harness has an `update_plan` tool. For multi-step work, the agent posts a checklist and ticks it off as it goes. You see it beside the chat, or above the input in the terminal.
 - **Models:** a spec names a preferred model, used when its provider has credentials on your machine. A Claude model on Bedrock falls back to the same model from Anthropic when you have an Anthropic key. Otherwise pi picks a model from the provider you set up. Switch models any time from the model dropdown.
 

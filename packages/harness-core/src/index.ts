@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { main } from "@earendil-works/pi-coding-agent";
 import { type HarnessSpec, loadSpec, themeName } from "@forge/harness-spec";
-import { applySavedCredentials, harnessCredentials, isPackagedBinary, startWeb } from "@forge/harness-web";
+import { activeSandbox, applySavedCredentials, harnessCredentials, isPackagedBinary, startWeb } from "@forge/harness-web";
 
 export type { HarnessSpec };
 
@@ -143,6 +143,9 @@ export async function runHarness(harnessDir: string, args: string[] = process.ar
 	process.env.PI_CODING_AGENT_DIR = agentDir;
 	process.env.FORGE_HARNESS_NAME = spec.name;
 	process.env.FORGE_HARNESS_DIR = dir;
+	// Sandbox mode from Settings (or the spec default), read by the generated forge-sandbox extension.
+	const sandbox = activeSandbox(spec, agentDir);
+	process.env.FORGE_SANDBOX = JSON.stringify({ mode: sandbox.mode, folder: sandbox.folder });
 	// Harness versions are pinned by forge; pi's own update notices do not apply.
 	process.env.PI_SKIP_VERSION_CHECK ??= "1";
 
@@ -171,6 +174,8 @@ export async function runHarness(harnessDir: string, args: string[] = process.ar
  * Passing --no-skills or --skill yourself keeps pi's own behavior.
  */
 function skillArgs(harnessDir: string, args: string[]): string[] {
+	// pi's subcommands (`<harness> mcp list`, `install`, `config`…) must stay the first argument.
+	if (["mcp", "install", "remove", "uninstall", "update", "list", "config", "auth"].includes(args[0] ?? "")) return [];
 	if (args.includes("--no-skills") || args.includes("-ns") || args.includes("--skill")) return [];
 	const own = join(harnessDir, "custom", "skills");
 	return existsSync(own) ? ["--no-skills", "--skill", own] : ["--no-skills"];

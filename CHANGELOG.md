@@ -2,6 +2,19 @@
 
 All notable changes to pi-Forge. Versions follow [Semantic Versioning](https://semver.org).
 
+## 1.0.2 (2026-10-05)
+
+### New
+- **MCP servers in Settings:** add, edit or remove MCP servers per harness, by form or by pasting a README's JSON. Turn them on and off, and test their connections.
+- **Usage:** tokens and estimated cost under every answer, the chat's total in the top bar, and today/month/all-time totals by model in Settings.
+- **Sandbox mode:** Settings → Safety has *Workspace only* (file tools stay in one folder, shell commands need approval) and *Read-only*. The spec can set the default with `guards.sandbox`.
+- **Schedules:** a Schedules page for prompts that run daily, on weekdays, weekly or every few hours. Each run is saved as a chat, with Run now, last result and cost.
+- **Package at the end of a build:** pi-Forge asks which systems to package a finished harness for (Windows, macOS Apple Silicon or Intel, Linux), builds each one onto the Desktop with a zip to share. `forge_package` takes several `targets` and `desktop: true`; the packager adds `--desktop` and `--zip`.
+
+### Fixed
+- `npm run verify` no longer stops at a harness that hasn't been generated yet. It reports it and checks the rest.
+- The restart notice after changing settings no longer talks about keys.
+
 ## 1.0.1 (2026-10-05)
 
 ### New
